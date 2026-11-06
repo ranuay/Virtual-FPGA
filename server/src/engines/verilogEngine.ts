@@ -19,6 +19,7 @@ import { compileVerilog, readBanner, readTopPorts, type CompileRequest } from '.
 import { startVerilogBatchRun, startVerilogBoardRun } from '../verilog/run.js';
 import { buildBoardTestbench, TESTBENCH_MODULE_NAME } from '../verilog/testbench.js';
 import { getToolPaths } from '../verilog/tools.js';
+import { checkIncludes } from '../verilog/includes.js';
 import { findOwnDump } from '../verilog/dumpDetection.js';
 import { OWN_DUMP_MISSING_MESSAGE } from '../wave/waveConsole.js';
 import { WAVE_MODULE_FILE_NAME, WAVE_MODULE_NAME, waveModuleSource, wavePlusarg } from '../verilog/waveModule.js';
@@ -199,6 +200,9 @@ async function versionNotes(tools: ToolPaths, dir: string): Promise<string[]> {
 async function prepare({ dir, files, topFile, runTarget, wave, board }: PrepareRequest): Promise<PrepareResult> {
   const checked = checkProject(files, topFile, runTarget);
   if (!checked.ok) return failure(checked.stage, checked.text);
+  // Before any file is written or any compiler is spawned: Icarus 12 spins on a cycle.
+  const includes = checkIncludes(files, checked.topFile);
+  if (!includes.ok) return failure('analyze', includes.text);
   writeProject(dir, files);
 
   const tools = getToolPaths();

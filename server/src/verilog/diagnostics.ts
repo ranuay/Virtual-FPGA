@@ -24,6 +24,15 @@ export interface CompileFailure {
  */
 const ELABORATION_MARKERS: readonly RegExp[] = [/error\(s\) during elaboration/, /Unable to find the root module/];
 
+/**
+ * Failures of the preprocessor, reported by Icarus *during* elaboration because it has
+ * not finished reading the sources — a missing `` `include `` shows up as "Unable to find
+ * the root module" only because the file it would have defined was never read. They are
+ * analyzed-stage problems, so they are matched first: what the student has to fix is the
+ * text, not the design matching the board.
+ */
+const PREPROCESSOR_MARKERS: readonly RegExp[] = [/Include file .* not found/, /Invalid `line directive/, /Unknown macro/];
+
 /** Node's message when the program itself cannot be started, e.g. `Error: spawn iverilog ENOENT`. */
 const PROGRAM_NOT_FOUND = /spawn .* ENOENT/;
 
@@ -37,6 +46,7 @@ export function classifyCompileFailure(stderr: string, exitCode: number): Compil
   if (text === '') {
     return { stage: 'analyze', text: `iverilog failed with exit code ${exitCode} and printed nothing.` };
   }
+  if (PREPROCESSOR_MARKERS.some((marker) => marker.test(text))) return { stage: 'analyze', text };
   const stage = ELABORATION_MARKERS.some((marker) => marker.test(text)) ? 'elaborate' : 'analyze';
   return { stage, text };
 }

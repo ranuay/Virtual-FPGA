@@ -34,6 +34,16 @@ describe('classifyCompileFailure', () => {
   test('trims surrounding blank lines from the compiler text', () => {
     assert.equal(classifyCompileFailure('\n\nx.v:1: syntax error\n\n', 2).text, 'x.v:1: syntax error');
   });
+
+  test('reports a missing include as an analyze error, though Icarus counts it as elaboration', () => {
+    const stderr = 'top.v:2: Include file nowhere.vh not found\n1 error(s) during elaboration.\n';
+    assert.equal(classifyCompileFailure(stderr, 1).stage, 'analyze');
+  });
+
+  test('reports what a circular include leaves behind as an analyze error', () => {
+    const stderr = './a.vh:2: Invalid `line directive.\n1 error(s) during elaboration.\n';
+    assert.equal(classifyCompileFailure(stderr, 1).stage, 'analyze');
+  });
 });
 
 describe('classifyCompileFailure — simulator missing', () => {

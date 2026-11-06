@@ -13,7 +13,8 @@ something that was never run.
 extended into the ACSL Virtual FPGA Lab. `PRD.md` is the specification and the
 phase plan; `docs/*.md` are the per-feature plans. Read the relevant plan before
 touching the feature it describes — they carry the decisions and the tests those
-decisions are pinned by.
+decisions are pinned by. `docs/acsl_tickets.md` is the order of what is left and
+which of those plans a ticket will touch.
 
 Two simulators do the real work, and neither is installed by `npm install`:
 GHDL (VHDL) and Icarus Verilog (Verilog). Without them the app still runs but

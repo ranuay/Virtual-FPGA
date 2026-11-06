@@ -93,3 +93,49 @@ begin
   end process;
 end architecture;
 `;
+
+/**
+ * ACSL lab code as it is handed out: `std_logic_arith` and `std_logic_unsigned`, the
+ * two packages GHDL only accepts with `-fsynopsys` (PRD § 8.1). A board design, so it
+ * goes through all three stages — `ghdl -a`, `-e` of the generated testbench, and `-r`
+ * — each of which re-reads the `use` clauses and fails on its own without the flag.
+ */
+export const ACSL_STD_LOGIC_UNSIGNED_VHDL = `library ieee;
+use ieee.std_logic_1164.all;
+use ieee.std_logic_unsigned.all;
+
+entity acsl_adder is
+  port (
+    SW   : in  std_logic_vector(9 downto 0);
+    LEDR : out std_logic_vector(9 downto 0)
+  );
+end entity;
+
+architecture rtl of acsl_adder is
+begin
+  LEDR <= SW + 1;
+end architecture;
+`;
+
+/** The same two packages in a portless testbench: the batch path's `-e` and `-r`. */
+export const ACSL_STD_LOGIC_ARITH_VHDL = `library ieee;
+use ieee.std_logic_1164.all;
+use ieee.std_logic_arith.all;
+use ieee.std_logic_unsigned.all;
+
+entity acsl_conv is
+end entity;
+
+architecture sim of acsl_conv is
+begin
+  process
+    variable a : std_logic_vector(3 downto 0) := "0011";
+    variable n : integer;
+  begin
+    n := conv_integer(a);
+    report "conv_integer(a)=" & integer'image(n);
+    wait;
+  end process;
+end architecture;
+`;
+

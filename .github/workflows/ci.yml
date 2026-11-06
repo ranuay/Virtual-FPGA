@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# The gate every change to main passes through. Until this file existed the
+# only workflows ran on a release tag, so a branch could break types, lint or
+# the unit tests and nothing noticed until the AppImage was built 45 minutes
+# later. This runs on every pull request and on every push to main, so main's
+# last run is always the current one.
+#
+# Fast on purpose: GHDL and Icarus are NOT installed here. The backend's
+# simulator tests skip themselves when the tools are missing (testSupport/
+# requireTool.ts), and the checks that need a real simulator stay in
+# build-linux.yml, where the packaged tree is tested with
+# HDLBOARD_REQUIRE_SIMULATORS=1 so a skip counts as a failure. A change that
+# breaks simulation is caught at the tag; a change that breaks types, lint,
+# the build or the ~3100 unit tests is caught here in about two minutes.
+#
+# Make this the required check on main (Settings › Branches › main:
+# "Require status checks to pass", check "verify") or it is only a report.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run it supersedes; the run for a
+# given ref is never useful twice.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    # Pinned, as in the release workflows: both lockfiles must resolve where
+    # the AppImage is built, so dev and release agree on Node.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      # npm ci, not install: a lockfile out of step with package.json is a
+      # failure here rather than a surprise in the release build.
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix server
+
+      # Types first: it is the fastest way to reject a change and the one most
+      # likely to be broken by an agent's edit.
+      - name: Frontend typecheck
+        run: npm run typecheck
+
+      - name: Backend typecheck
+        run: npm run typecheck --prefix server
+
+      - name: Frontend lint
+        run: npm run lint
+
+      - name: Backend lint
+        run: npm run lint --prefix server
+
+      # Vitest over src/ only; the backend's tests run under Node's runner and
+      # must not be picked up here (vitest.config.ts).
+      - name: Frontend unit tests
+        run: npm test
+
+      # Unit only. Integration tests need a simulator and belong to the release
+      # workflow; with no GHDL on PATH the simulator tests skip, which this job
+      # accepts — build-linux.yml is where a skip becomes a failure.
+      - name: Backend unit tests
+        working-directory: server
+        run: npm test
+
+      # tsc -b && vite build: catches what typecheck alone does not, such as a
+      # module that only resolves under the bundler.
+      - name: Frontend build
+        run: npm run build
+
+      - name: Backend build
+        run: npm run build --prefix server

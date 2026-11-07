@@ -48,6 +48,126 @@ Read this before writing one; it is where new examples go wrong.
   another board's keys (`BOARD_DESCRIPTIONS`), and test designs in
   `server/src/testSupport/shapeDesigns.ts` if a suite drives them.
 
+## The handouts
+
+The practical sheets are the site, not a PDF: <https://fpga.acsl.my.id/docs/>.
+Its VHDL was run through this backend, so what follows is measured, not read off
+the page.
+
+**It compiles as printed.** All thirteen sources - Bab 5's `sevseg`, `sevseg2`,
+`sevseg3`; Bab 6's `sevseg_fsm`, `TrafficLightFSM`; Bab 7's eight - analyse *and*
+elaborate on the bundled GHDL 6.0.0 with `--std=08 -fsynopsys`, the flags
+`acsl/ghdl-compat` adds. That branch is enough to make the sheets work; never edit
+a handout to make it compile.
+
+**It shows nothing as printed.** Run in board mode on `nexys-a7`, all thirteen
+reach `READY` and every one is inert: exactly one `STATE` frame, then no more,
+carrying `16 zeros + 48 ones` - every LED off, every digit dark. Each port is
+warned as not a board port (`clk`, `pos_seg`, `led_seg`, `count_up`, `bcd_input`,
+`green`, `a`, `b`, `sel`…), the testbench holds the inputs at 0 ("`clk` is not a
+board input, so the board holds it at 0") and drops the outputs. Renaming is
+therefore the job of T1-T3, not a tidy-up after it.
+
+The rename each design needs, so a student's copy from the site still matches what
+they see in the lab:
+
+| Handout port | Board port |
+|---|---|
+| `clk` (100 MHz, counting) | `CLOCK100MHZ` |
+| `clk` (only "slow enough to press") | `CLOCK_500Hz` |
+| `count_up`, `count_down` | `BTNC`, `BTNU` |
+| `reset` | `BTNU`, or `CPU_RESETN` (active-low) |
+| `pos_seg`, `an` | `AN` |
+| `led_seg`, `seg` | `CA..CG` + `DP` |
+| `green`, `yellow`, `red` | `LED0`, `LED1`, `LED2` |
+| `bcd_input`, `a`, `b`, `c`, `sel` | `SW` |
+
+### Where the handouts are wrong, and what T1-T3 do about it
+
+Each was observed; none is a guess.
+
+- **`sevseg` cannot run at all - it crashes on a bound check.** Both of its
+  counters declare a subtype the increment overflows, and GHDL checks the
+  *expression*, not the assignment:
+
+  ```vhdl
+  signal delay  : natural range 0 to 1000 := 0;   -- delay  + 1 = 1001
+  signal number : natural range 0 to 7    := 0;   -- number + 1 = 8
+  ```
+
+  `delay <= delay + 1` runs before `if delay >= 1000`, so at 1000 the right-hand
+  side is out of range; `number <= number + 1` is out of range at 7 even though the
+  `if number >= 7` arm assigns 0 straight after. Measured: a testbench clocking the
+  handout at 100 MHz dies with `ghdl:error: bound check failure at sevseg.vhd:19`
+  after 10 us, and the app reports only `Simulation exited unexpectedly.` - the pane
+  says nothing about a range. In board mode as printed it never gets that far
+  (the clock is held at 0), so this is exactly the failure a student hits the moment
+  they rename `clk` to `CLK100MHZ` and think they are done. T1 must not ship this
+  shape: test the counter before incrementing (`if delay = 1000 then … else
+  delay <= delay + 1`), which runs to the end - verified for 400 us, cycling
+  1..8 with `AN` walking `01111111 → 11111110`.
+- **`sevseg2` is not a binary-to-BCD converter.** It is a 4-bit BCD to 7-segment
+  decoder plus a one-hot digit select, and the page titles it "Program Binary to
+  BCD". Name the example for what it does, or T1 ships a misnamed card.
+- **`sevseg2` blanks zero and nine.** Its first `case` has no `"0000"` arm, so 0
+  falls to `when others => "1111111"` (all segments off), and 9 does too. Measured:
+  `BCD 0 -> seg=1111111 an=11111111`, `BCD 9 -> seg=1111111 an=11111111`; renamed
+  onto the board with `SW = 0` the whole pane stays idle for the same reason. A
+  student who types the sheet gets a display that cannot show 0. The example carries
+  the missing arms.
+- **`sevseg3` counts on the raw clock.** No divider, so a press at 100 MHz spans
+  millions of rising edges and the count races to 9 and wraps. The edge detector
+  itself is right - a 100 ns press steps exactly once, up `1→2→3`, down `3→2→1` - so
+  the fix is to run that detector on `CLOCK_500Hz`, as `keyCounter7Seg.vhdl` does.
+- **`sevseg_fsm` refreshes too slowly to stay lit.** Its tick is `clkdiv = 0` on a
+  24-bit counter, which at 100 MHz is one digit per 167.77 ms - measured as
+  `AN` stepping every 167 772 175 000 000 fs. A digit goes dark after
+  `DISPLAY_PERSIST_MS` = 75 ms (`server/src/engines/boardTiming.ts:55`), so the pane
+  can only ever show one lit digit at a time, and a full frame takes 1.34 s. T2
+  should clock the same FSM from `CLOCK_500Hz` and drop `clkdiv` entirely.
+  Note also the cost: that 100 MHz run took 660 s of wall clock for 0.7 s of
+  simulated time, which is why the paced clock is not just tidier but the only way
+  a lab session stays usable.
+- **`TrafficLightFSM` says "5 detik" and means 0.5 s.** `counter = 50000000` at
+  100 MHz is half a second. Under `CLOCK_500Hz` pacing no divider is needed at all,
+  which is what T2 does.
+
+### What the adaptation looks like when it works
+
+Both Bab 5 designs were rewritten in the board's names and driven through the real
+backend on `nexys-a7`, which is the shape T1 should produce:
+
+- **The counter** (`CLOCK_500Hz`, `BTNC` up, `BTNU` reset, one digit on `AN`):
+  presses step the display `0 → 1 → 2 → 3 → 4` and `BTNU` returns it to `0`.
+  Clocking it from `CLOCK_500Hz` is what makes one press one step; the handout's
+  edge detector is kept as printed.
+- **The decoder** (`SW(3 downto 0)` in, one digit out): `SW` = 0…9 shows `0`…`9`,
+  and 10…15 show blank via `when others`. Adding the two missing arms is the only
+  change from the sheet, and it is the difference between a display that shows 0 and
+  one that cannot.
+
+Two things a ticket must not forget, both learned by driving this. `STIM`'s button
+field is written most-significant bit first (`boardShape.ts`, "each field bit N−1
+first"), so the character on the **right** is the first button in `boardBindings`
+order: `00001` is `BTNC` and `00010` is `BTNU` on Nexys A7, and `10000` is `BTND`.
+The shipped `keyCounter7Seg.vhdl` confirms it - `00001` steps `00 → 10 → 20 → 30` and
+`00010` returns it to `00`. And a press needs a release before the next press, since
+both counters step on the edge.
+
+### What is *not* wrong
+
+Checked, so a later ticket does not "fix" it:
+
+- **Bab 7's arithmetic is correct.** A truth-table run of the site's own sources
+  matched every case: adder 128/128 (`cout` is the fourth bit), subtractor 128/128
+  (`bout`), multiplier 128/128, comparator 128/128, and the ALU 128/128 across all
+  four opcodes and both carry values. T3 can assert exact bits.
+- **`comparator_3bit` compiles with only `STD_LOGIC_1164`.** `a > b` on
+  `std_logic_vector` is legal in VHDL-2008, which defines relational operators on
+  arrays of discrete types. `--std=08` is load-bearing for Bab 7, not cosmetic.
+- **T3's "opcode on the top three switches" is right.** `sel` is 2 bits and `c` is a
+  separate 1-bit carry/borrow input: two switches for the opcode, one for `c`.
+
 ## Merge first
 
 Two pushed branches are ahead of `main` and nothing else can be trusted before
@@ -63,9 +183,9 @@ commits on top of its first (see the rows); the branch tip is what merges.
 
 | # | Branch | What | Done when |
 |---|---|---|---|
-| T1 | `acsl/seven-seg-examples` | Bab 5's two practical designs (PRD Phase 4 tasks 3-4): an up/down counter shown on the display, and a binary-to-BCD converter. Both drive a display, so each needs the built-in pair in Default names (`HEX0_N`/`HEX1_N`, independent) **and** a Nexys A7 file using `CA..CG` + `DP` + `AN`, card `usesHex: true`. `src/components/workbench/boardExamples/nexys-a7/vhdl/keyCounter7Seg.vhdl` is the pattern: segment table, `CLOCK_500Hz` digit scan, `BTNC`/`BTNU`. Cross-check the numbers against the handouts before writing them. | On the Nexys A7 board both examples load from the Examples pane; the counter steps on `BTNC` and resets on `BTNU`; the digits shown equal the binary value on the switches; and a test pins two digits of each - a design pair in `server/src/testSupport/shapeDesigns.ts` driven through the `nexys-a7` case in `integration/boardShapes.test.ts`. |
-| T2 | `acsl/traffic-light` | Bab 6's FSM (PRD § 5, Phase 4 tasks 5-7). LED-only output, `LED2..0` = red, amber, green, each state held long enough to watch, clocked from `CLOCK_500Hz` so no divider is needed. Because the rename is inert on Nexys A7 this still needs a `boardExamples/nexys-a7/` file (`LED` there, not `LEDR`), card gated like T1. Declare the states so a waveform can name them: Verilog `localparam` groups (`src/components/waveform/verilogStates.ts` reads `localparam` only, never `parameter`), or a VHDL enumeration, which GHW carries by name. Note that **only a batch run has a waveform** - `boardPlan` (`ghdlEngine.ts:99`, `verilogEngine.ts:143`) sets no `wave` - so the named states are visible in a testbench run, and in board mode the three LEDs are the whole observation. | Red → green → amber → red at roughly 1 s a state on the LEDs; the same file run as a batch run names its states in the waveform; a scenario test drives one full cycle. |
-| T3 | `acsl/alu-examples` | Bab 7's eight designs (PRD Phase 6): half adder, full adder, 3-bit adder, full subtractor, 3-bit subtractor, 3-bit multiplier, 3-bit comparator, ALU. Operands from `SW`, result and carry/borrow/compare on `LED`, the ALU's opcode on the top three switches. Built-in pair plus a Nexys A7 file each, same reason as T2. **No visualizer UI** - see "Not tickets". | For each design, a scenario test drives a set of operands and asserts the exact `STATE` bits; a swapped operand order or a dropped carry fails it. |
+| T1 | `acsl/seven-seg-examples` | Bab 5's two practical designs (PRD Phase 4 tasks 3-4): the up/down counter (`sevseg3`) and the BCD to 7-segment decoder (`sevseg2` - the site calls it "binary to BCD"; see "The handouts"). Both drive a display, so each needs the built-in pair in Default names (`HEX0_N`/`HEX1_N`, independent) **and** a Nexys A7 file using `CA..CG` + `DP` + `AN`, card `usesHex: true`. `src/components/workbench/boardExamples/nexys-a7/vhdl/keyCounter7Seg.vhdl` is the pattern: segment table, `CLOCK_500Hz` digit scan, `BTNC`/`BTNU`. Two handout defects to fix rather than copy: `sevseg2` has no `"0000"` or `"1001"` arm (0 and 9 show blank) and `sevseg3` counts on the raw clock. | On the Nexys A7 board both examples load from the Examples pane; the counter steps on `BTNC` and resets on `BTNU`; the digits shown equal the binary value on the switches; and a test pins two digits of each - a design pair in `server/src/testSupport/shapeDesigns.ts` driven through the `nexys-a7` case in `integration/boardShapes.test.ts`. |
+| T2 | `acsl/traffic-light` | Bab 6's FSM (PRD § 5, Phase 4 tasks 5-7). LED-only output, `LED0..2` = red, amber, green, each state held long enough to watch, clocked from `CLOCK_500Hz` so no divider is needed - the handout's own divider is 50 000 000 cycles, half a second, despite its "5 detik" comment. Because the rename is inert on Nexys A7 this still needs a `boardExamples/nexys-a7/` file (`LED` there, not `LEDR`), card gated like T1. Declare the states so a waveform can name them: Verilog `localparam` groups (`src/components/waveform/verilogStates.ts` reads `localparam` only, never `parameter`), or a VHDL enumeration, which GHW carries by name. Note that **only a batch run has a waveform** - `boardPlan` (`ghdlEngine.ts:99`, `verilogEngine.ts:143`) sets no `wave` - so the named states are visible in a testbench run, and in board mode the three LEDs are the whole observation. | Red → green → amber → red at roughly 1 s a state on the LEDs; the same file run as a batch run names its states in the waveform; a scenario test drives one full cycle. |
+| T3 | `acsl/alu-examples` | Bab 7's eight designs (PRD Phase 6): half adder, full adder, 3-bit adder, full subtractor, 3-bit subtractor, 3-bit multiplier, 3-bit comparator, ALU. Operands from `SW`, result and carry/borrow/compare on `LED`, the ALU's 2-bit opcode plus its separate 1-bit carry/borrow input on switches. Built-in pair plus a Nexys A7 file each, same reason as T2. The handout arithmetic is already verified case by case (see "The handouts"), so an example that disagrees with a truth table is the port's fault, not the sheet's. **No visualizer UI** - see "Not tickets". | For each design, a scenario test drives a set of operands and asserts the exact `STATE` bits; a swapped operand order or a dropped carry fails it. |
 
 ## Needs something this repository does not have
 

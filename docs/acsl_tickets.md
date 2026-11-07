@@ -216,6 +216,22 @@ Evidence is a passing suite or a file, not a claim.
   on a picture it is a small component over the same `STATE` bits - `Led` already
   takes `color: 'red' | 'green' | 'amber'`
   (`src/components/Leds/Led.tsx`) - with no protocol or backend change.
+- **A 3D model of the board.** The lab is short of Nexys A7s, so the pane has to
+  stand in for the hardware - but a render stands in for the *look*, and the look
+  is the cheap half. What teaches transfer is already there and already measured:
+  the board's ports are the master XDC's names (T4, "Already there"), the switches
+  are real `<button role="switch">` you click, the LEDs and digits are lit from the
+  simulator's `STATE` frame, and a press is one `STIM` field bit. A glTF scene adds
+  a ~150 kB renderer, an asset pipeline, raycast hit-testing and a camera, and
+  loses what convention 8 bought: a canvas is not focusable, not announced, and
+  has no `aria-checked` - so the one student who needs the keyboard loses the
+  board. It also breaks `docs/Design_Description.md` § 7 rule 10, "No images, no
+  SVG, no canvas", which is what keeps the pane sharp at any size and DPR. If the
+  real gap turns out to be *panel arrangement* (the 2×2 from
+  `Component_grouping.png` is not the Nexys A7's physical grouping), that is a
+  `Board.tsx` layout change, not a renderer. If it is the *workflow* (synthesis →
+  implementation → bitstream → program device), that is a page of prose: the app
+  never programmes a device, and a 3D board does not teach a Vivado sequence.
 - **A new pane.** Two side panes exist (`sidebar`, `board`) and the board pane is
   where all of Bab 5-7 is observed. Nothing in these three chapters needs a third.
 

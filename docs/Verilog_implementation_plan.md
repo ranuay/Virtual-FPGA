@@ -475,8 +475,8 @@ as a **backslash Windows path** (M21).
   left to Icarus, which reports it in 0.1 s. An `` `include `` behind a
   conditional (`ifdef`/`ifndef`/`if` … `endif`) is not an edge at all: a false
   guard makes the cycle legal, and only the preprocessor knows which branch
-  runs — Icarus 13.0 compiles that design in 59 ms. A genuine cycle there is
-  left to Icarus, which reports it as a preprocessor error.
+  runs — Icarus 13.0 compiles that design in 0.06–0.14 s (two runs). A genuine
+  cycle there is left to Icarus, which reports it as a preprocessor error.
 - Each tool run is bounded by the 30 s build timeout. **No fixed-point ordering
   loop** (the GHDL flow needs one): `iverilog` resolves module references across
   all files in one run.

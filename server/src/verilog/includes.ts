@@ -54,8 +54,9 @@ function conditionalStep(name: string | undefined): number {
  * Every `` `include `` in `source` that is not behind a conditional, with the line it is on.
  * A conditional (`ifdef`, `ifndef`, `if` … `endif`) may be false at preprocess time, and only
  * the preprocessor knows: an `` `include `` inside one is left to Icarus, which accepts a cycle
- * there when the guard is not taken (measured: Icarus 13.0 compiles it in 59 ms). Counting the
- * nesting is enough — `else` and `elsif` change which branch runs, not whether one does.
+ * there when the guard is not taken (measured on Icarus 13.0: 0.06-0.14 s to compile such a
+ * design, so there is nothing to rescue). Counting the nesting is enough — `else` and `elsif`
+ * change which branch runs, not whether one does.
  */
 function directivesIn(source: string, file: string): Directive[] {
   const found: Directive[] = [];

@@ -51,13 +51,13 @@ Read this before writing one; it is where new examples go wrong.
 ## Merge first
 
 Two pushed branches are ahead of `main` and nothing else can be trusted before
-they land. Merge them before T1 and do not re-implement either. Each now has a
-second commit on top (see the rows), so the branch tip is what merges.
+they land. Merge them before T1 and do not re-implement either. Each has two
+commits on top of its first (see the rows); the branch tip is what merges.
 
 | Branch | What it fixes |
 |---|---|
 | `acsl/ghdl-compat` (`739e5e6`) | ACSL handout code that imports `ieee.std_logic_arith`, `std_logic_unsigned` or `std_logic_signed` does not analyse on `main`: `GHDL_STANDARD` there is a bare `--std=08` (`server/src/engines/ghdlEngine.ts:29`) and GHDL wants `-fsynopsys` at `-a`, `-e` *and* `-r`. The branch replaces that constant with `GHDL_OPTIONS` carrying the flag and pins it in `integration/synopsysPackages.test.ts` — verified on this machine's bundled GHDL 6.0.0, 2/2 pass. Without it, every practical sheet has to be edited by the student first, which defeats the lab. Its second commit (`739e5e6`) names the flag in the docs that list the backend's GHDL commands: `editor_diagnostics_implementation_plan.md` § 2.6 and Appendix A, `editor_diagnostics_improvement_plan.md` § 1, `plugin_batch_implementation_plan.md` § 2 and § 5. |
-| `acsl/verilog-include-cycle` (`f3788fe`) | A circular `` `include `` is only found by Icarus exhausting its descriptors, so the run dies on the 30 s compile timeout with no message. The branch finds the cycle in `server/src/verilog/includes.ts` before any compiler starts and reports file, line and loop. Its second commit (`f3788fe`) stops it counting an `` `include `` behind an `ifdef`/`ifndef`/`if` as an edge: a false guard makes the cycle legal (Icarus 13.0 compiles it in 59 ms), so counting it rejected working code. Verified through the backend on this machine: the guarded cycle reaches `READY`, an unguarded one is an `analyze` error naming `top2.v → b.vh → top2.v` in 9 ms. |
+| `acsl/verilog-include-cycle` (`c74494a`) | A circular `` `include `` is only found by Icarus exhausting its descriptors, so the run dies on the 30 s compile timeout with no message. The branch finds the cycle in `server/src/verilog/includes.ts` before any compiler starts and reports file, line and loop. Its second commit (`f3788fe`) stops it counting an `` `include `` behind an `ifdef`/`ifndef`/`if` as an edge: a false guard makes the cycle legal (Icarus 13.0 compiles it in 0.06–0.14 s), so counting it rejected working code; the third (`c74494a`) replaces the one-run 59 ms figure with that range. Verified through the backend on this machine: the guarded cycle reaches `READY`, an unguarded one is an `analyze` error naming `top2.v → b.vh → top2.v` in 9–12 ms. |
 
 ## Ready to start
 

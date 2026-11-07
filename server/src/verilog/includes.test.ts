@@ -76,4 +76,14 @@ describe('checkIncludes', () => {
     const files = [file('top.v', TOP), file('a.vh', '\n\n`include "b.vh"\n'), file('b.vh', '`include "a.vh"\n')];
     assert.match(problemOf(files), /^b\.vh:1: /);
   });
+
+  test('leaves an include behind a conditional to Icarus, which accepts a false guard', () => {
+    // `ifdef PLATFORM_B` is never defined here, so Icarus compiles this and the cycle is not
+    // one. The check cannot know which branch runs, so it does not count the edge at all.
+    const files = [
+      file('top.v', '`ifdef PLATFORM_B\n`include "a.vh"\n`endif\nmodule top(output [9:0] LEDR);\n  assign LEDR = 10\'d0;\nendmodule\n'),
+      file('a.vh', '`include "top.v"\n'),
+    ];
+    assert.deepEqual(checkIncludes(files, 'top.v'), { ok: true });
+  });
 });

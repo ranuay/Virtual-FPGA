@@ -472,8 +472,11 @@ as a **backslash Windows path** (M21).
   reports the closing include with a file, a line, and the loop, as an
   `analyze` error. Comments and strings are not directives, a diamond is not a
   cycle, an `` `include `MACRO `` is not followed, and a *missing* header is
-  left to Icarus, which reports it in 0.1 s and accepts the `` `ifdef``-guarded
-  ones a check here could wrongly reject.
+  left to Icarus, which reports it in 0.1 s. An `` `include `` behind a
+  conditional (`ifdef`/`ifndef`/`if` … `endif`) is not an edge at all: a false
+  guard makes the cycle legal, and only the preprocessor knows which branch
+  runs — Icarus 13.0 compiles that design in 59 ms. A genuine cycle there is
+  left to Icarus, which reports it as a preprocessor error.
 - Each tool run is bounded by the 30 s build timeout. **No fixed-point ordering
   loop** (the GHDL flow needs one): `iverilog` resolves module references across
   all files in one run.

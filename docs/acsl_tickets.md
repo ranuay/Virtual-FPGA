@@ -73,7 +73,7 @@ they see in the lab:
 
 | Handout port | Board port |
 |---|---|
-| `clk` (100 MHz, counting) | `CLOCK100MHZ` |
+| `clk` (100 MHz, counting) | `CLK100MHZ` |
 | `clk` (only "slow enough to press") | `CLOCK_500Hz` |
 | `count_up`, `count_down` | `BTNC`, `BTNU` |
 | `reset` | `BTNU`, or `CPU_RESETN` (active-low) |
@@ -191,7 +191,7 @@ commits on top of its first (see the rows); the branch tip is what merges.
 
 | # | Branch | What | Needs |
 |---|---|---|---|
-| T4 | `acsl/nexys-lab-profile` | Check `nexys-a7` against the lab's own hardware and handouts (PRD § 4: master XDC, board reference manual, practical source, the hardware in the lab) and record what differs. | A human with the lab board and the handouts. Do not guess a pinout. |
+| T4 | `acsl/nexys-lab-profile` | **Nothing to build unless the lab's board is a rev B.** The lab's two boards are a Nexys A7 and a Nexys 4, and `nexys-a7` already covers both: the Nexys 4 DDR *is* the Nexys A7 under its old name, and Digilent's two master XDCs agree on all 55 basic-I/O pins (`CLK100MHZ` E3, `SW[0]` J15, `LED[0]` H17, `CA` T10, `AN[0]` J17, `BTNC` N17, `CPU_RESETN` C12). Only the original Nexys 4 (rev B) differs, and only in its port names, not in what the board has. Measured on `nexys-a7`: a rev-B-named design binds `sw`, `led`, `an`, `dp` and all five `btnC/U/L/R/D` (names match case-insensitively), and exactly three ports fail - `clk` (the board wants `CLK100MHZ`), `seg` (it wants `CA..CG`) and `btnCpuReset` (it wants `CPU_RESETN`) - each reported by name. Pins are irrelevant here: this app simulates, it does not build a bitstream, so the only thing that matters is that a port binds. A rev-B student therefore gets a working pane after renaming three ports, and the app already says which. Adding a `nexys4` entry to `builtinBoards.json` would buy a student nothing the warning does not, so it stays unbuilt (YAGNI). | One look at the silkscreen on the lab's second board: "Nexys 4 DDR" means no ticket at all. Only a rev B, *and* a handout that spells its ports that way, reopens it. |
 | T5 | `acsl/deploy` | `docker/`, `nginx.conf` and `docs/HOSTING*.md` against the real domain (PRD says `fpga.acsl.my.id`; nothing in the repo names it yet), sized for a lab. | A host |
 
 ## Already there (do not re-ticket)

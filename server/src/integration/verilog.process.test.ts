@@ -71,7 +71,8 @@ describe('Verilog process layer (real Icarus)', { skip }, () => {
     const dir = sessionFor(t, { 'warn.v': WIDTH_MISMATCH });
     const outcome = await compileVerilog(tools, { dir, target: 'tw', files: ['warn.v'] });
     assert.ok(outcome.ok);
-    assert.match(outcome.messages.join('\n'), /Port 2 \(b\) of module w expects 4 bit\(s\), given 10/);
+    // Icarus 13.0: "of module w expects 4 bit(s), given 10"; 12.0: "of w expects 4 bits, got 10".
+    assert.match(outcome.messages.join('\n'), /Port 2 \(b\) of (?:module )?w expects 4 bit(?:\(s\)|s)?, (?:got|given) 10/);
   });
 
   test('a design that compiles clean returns no messages', async (t) => {

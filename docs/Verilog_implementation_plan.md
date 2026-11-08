@@ -341,9 +341,10 @@ harness was a Node script that drives `vvp` the way `session.ts` drives GHDL
 | M20 | Do the converted starters work end to end? | **Yes.** All three (Appendix C) compiled clean under `-Wall -Wno-timescale` and were driven through the full board protocol (52-bit state, input queue with acknowledgements, dwell rule, pacing) by a throwaway driver: `DE1_SoC.v` 4/4, `counter8` 5/5, `blinkTest.v` 3/3 (blink on at **241 ms**, off **247 ms** later, target 250). The self-checking `tb_counter8.v` ran in batch mode and printed `PASS`. |
 | M21 | Can one flat directory with a single DLL copy work? | **Yes.** `iverilog.exe`, `vvp.exe`, `ivl.exe`, `ivlpp.exe`, the eight DLLs (one copy each) and the `.vpi`/`.tgt`/`.conf` files in one directory; `iverilog -B<dir>` and `vvp -M<dir>`; `PATH` = `System32` only; from `…\T Rune Langøy\…`: compiled and passed the full `DE1_SoC` scenario (4/4). **8.3 MB** (against ≈ 12 MB with duplicated DLLs). **`-B` must be a backslash path**: with `C:/Users/…`, `iverilog` starts `ivl` through `cmd.exe`, which answers `'C:' is not recognized as an internal or external command`. |
 | M22 | Can Icarus supply the ports instead of a hand-written parser? | **Yes.** `iverilog -E` resolves `` `include``, `` `ifdef`` and macros but **keeps comments**. `iverilog -tstub -s <top>` on a test design with an `` `ifdef``'d-out port (`NEVER_PORT`), macro-sized widths (`` [`BOARD_W-1:0] ``), a generate loop, a parameter list and `(* keep *)` reported exactly the ports that exist (`CLOCK_50`, `KEY_N`, `LEDR`, `SW`, with widths), **identically on 12.0 and 13.0**; child scopes (`top.g[0]`…) follow and are ignored. A design that does not elaborate fails with the ordinary compile error. |
-| M23 | Includes | A nested chain six deep works. A missing include: `miss.v:2: Include file nope.vh not found`, exit 1 in ≈ 0.1 s. A circular include fails fast (≈ 0.1 s, no hang) with `./a.vh:2: Include file b.vh not found` — findable, though it does not say "circular"; shown verbatim. |
+| M23 | Includes | A nested chain six deep works. A missing include: `miss.v:2: Include file nope.vh not found`, exit 1 in ≈ 0.1 s. A circular include **does not fail fast** — see M23a. |
+| M23a | Circular includes, re-measured | The M23 result was taken at a low `ulimit -n`. Icarus reports a cycle only once it has exhausted its file descriptors, so the cost tracks that limit, not the cycled files: **0.02 s at 1024, ~0.9 s at 65536, ~7 s at 524288** — and **12.0 then never exits**, printing ``Invalid `line directive`` and spinning. From the backend that meant waiting out the 30 s compile timeout, with no frame to the student until it expired. The backend now finds the cycle itself before spawning Icarus (`server/src/verilog/includes.ts`), which reports it with a file and line in well under a second; a preprocessor failure is also classified `analyze` rather than `elaborate` (`diagnostics.ts`), since Icarus reports both during elaboration. |
 | M24 | Large project | 101 files (a chain of 100 modules, each instantiating the next, plus a top): compile **93 ms**, `-tstub` **120 ms** (a 12 106-line stub file). |
-| M25 | Output flood | A design printing on every edge of a 50 MHz clock produced **≈ 215 000 lines/s (2.8 MB/s)** into Node through `vvp -n -i`. **Nothing throttles it:** `session.ts` forwards each line as a `LOG` frame (lines 366 and 510) and `Workbench.tsx`'s `appendLog` copies the whole console array per line (`[...prev, line]`, no cap). The browser's reaction was not measured — expected to stall within seconds. GHDL's `report` in a clocked process has the same path (likely at a lower rate; not measured). |
+| M25 | Output flood | A design printing on every edge of a 50 MHz clock produced **≈ 215 000 lines/s (2.8 MB/s)** into Node through `vvp -n -i`. **Nothing throttled it:** `session.ts` forwarded each line as a `LOG` frame and `Workbench.tsx`'s `appendLog` copied the whole console array per line (`[...prev, line]`, no cap). **Fixed by E7/F7:** `outputLimiter.ts` forwards at most `LOG_LINES_PER_SECOND` (200) per one-second window and reports the rest in one summary line, for both engines, and `consoleLines.ts` caps the console at the newest 2 000. I-V21 checks the first for a Verilog and a VHDL flood (`integration/flood.test.ts`). The browser's reaction under a flood was not re-measured after the fix. |
 
 **Not measured:** POSIX behaviour of the stdin pacing (Windows and POSIX pipes
 block the same way, but step H2 makes it a gate); a browser click through the
@@ -463,6 +464,19 @@ as a **backslash Windows path** (M21).
   separator, `..`, a leading `-`, or an absolute path is rejected before
   anything is written (step C6). `.vh` files are written (so `` `include "x.vh" ``
   resolves through `-I.`) but not listed as compile units.
+- **A circular `` `include `` is found before any tool runs**
+  (`server/src/verilog/includes.ts`). Icarus finds one only by exhausting its file descriptors, which takes
+  as long as `ulimit -n` says and on 12.0 never ends at all (M23a). The check
+  walks the includes of every file in the project — Icarus preprocesses each
+  one it is given, so a cycle the top never reaches hangs it the same — and
+  reports the closing include with a file, a line, and the loop, as an
+  `analyze` error. Comments and strings are not directives, a diamond is not a
+  cycle, an `` `include `MACRO `` is not followed, and a *missing* header is
+  left to Icarus, which reports it in 0.1 s. An `` `include `` behind a
+  conditional (`ifdef`/`ifndef`/`if` … `endif`) is not an edge at all: a false
+  guard makes the cycle legal, and only the preprocessor knows which branch
+  runs — Icarus 13.0 compiles that design in 0.06–0.14 s (two runs). A genuine
+  cycle there is left to Icarus, which reports it as a preprocessor error.
 - Each tool run is bounded by the 30 s build timeout. **No fixed-point ordering
   loop** (the GHDL flow needs one): `iverilog` resolves module references across
   all files in one run.

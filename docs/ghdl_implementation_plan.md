@@ -1430,11 +1430,18 @@ Two adaptations:
 ### 7.4 GHDL invocation
 
 ```
-ghdl -a --std=08 <each file>
-ghdl -a --std=08 DE1_SoC_tb.vhd
-ghdl -e --std=08 DE1_SoC_tb
-ghdl -r --std=08 DE1_SoC_tb [strategy-specific args]
+ghdl -a --std=08 -fsynopsys <each file>
+ghdl -a --std=08 -fsynopsys DE1_SoC_tb.vhd
+ghdl -e --std=08 -fsynopsys DE1_SoC_tb
+ghdl -r --std=08 -fsynopsys DE1_SoC_tb [strategy-specific args]
 ```
+
+`-fsynopsys` is on all three stages, from one constant (`GHDL_OPTIONS`, `server/src/ghdl.ts`).
+ACSL lab code imports `ieee.std_logic_arith` / `std_logic_unsigned` / `std_logic_signed`,
+which GHDL refuses otherwise, and each stage re-reads the `use` clauses: with `-a` alone
+the file analyses, then `-e` and `-r` both fail with "needs the -fsynopsys option"
+(measured on GHDL 5.0.1). It changes no error text for a design that does not use the
+packages, and VHDL-2008 features are unaffected.
 
 - **`spawn(cmd, argsArray, { cwd })` only — never a shell string.** No
   source content, filename, or generic value is ever concatenated into a

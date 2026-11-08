@@ -8,7 +8,7 @@ needs none of this.
 
 | Tool | Purpose | Minimum |
 |---|---|---|
-| [GHDL](https://ghdl.github.io/ghdl/) | Compiles and simulates the VHDL | Anything supporting `--std=08` and `-g<name>=<value>` (verified against 5.0.1, mcode) |
+| [GHDL](https://ghdl.github.io/ghdl/) | Compiles and simulates the VHDL | Anything supporting `--std=08`, `-fsynopsys` and `-g<name>=<value>` (verified against 5.0.1, mcode) |
 | [Icarus Verilog](https://steveicarus.github.io/iverilog/) | Compiles and simulates Verilog designs (optional: VHDL works without it) | 12.0 or newer (verified against 12.0 and 13.0; `iverilog` and `vvp` on `PATH`) |
 | [Node.js](https://nodejs.org/) + npm | Frontend build and the backend | Node 18+ (20+ recommended) |
 

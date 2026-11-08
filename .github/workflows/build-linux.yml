@@ -141,11 +141,9 @@ jobs:
           GHDL_DIR: ${{ github.workspace }}/linuxAppImage/output/squashfs-root/resources/ghdl
           IVERILOG_DIR: ${{ github.workspace }}/linuxAppImage/output/squashfs-root/resources/iverilog
           HDLBOARD_REQUIRE_SIMULATORS: "1"
-        # ulimit: Icarus reports a circular `include only after running out of
-        # file descriptors, which takes ~1 s at the runner's 65536 and is quick
-        # at Windows' 512; I-V19 expects it within 1 s (linuxAppImage/README.md, Known gaps).
+        # No `ulimit -n` needed: the backend finds a circular `include itself
+        # (server/src/verilog/includes.ts), so I-V19 passes in well under 1 s.
         run: |
-          ulimit -n 4096
           npm test
           npm run test:integration
 

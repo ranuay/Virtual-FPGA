@@ -19,8 +19,16 @@ function countOnWindows(name: string): number {
   return (listing.stdout ?? '').split('\n').filter((line) => line.toLowerCase().startsWith(`"${image}"`)).length;
 }
 
+/**
+ * Ubuntu and Debian ship /usr/bin/ghdl as a shell script that execs a backend, so the
+ * running process is named `ghdl-mcode` (also -gcc, -llvm). Counting `ghdl` alone would
+ * report zero on those systems, which made I-G7 fail before it started.
+ */
+const POSIX_ALIASES: Readonly<Record<string, readonly string[]>> = { ghdl: ['ghdl', 'ghdl-mcode', 'ghdl-gcc', 'ghdl-llvm'] };
+
 function countOnPosix(name: string): number {
-  const listing = spawnSync('pgrep', ['-x', name], { encoding: 'utf8' });
+  const pattern = (POSIX_ALIASES[name] ?? [name]).join('|');
+  const listing = spawnSync('pgrep', ['-x', pattern], { encoding: 'utf8' });
   return (listing.stdout ?? '').split('\n').filter(Boolean).length;
 }
 

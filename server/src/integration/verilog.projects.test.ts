@@ -122,10 +122,11 @@ describe('Verilog path — projects', { skip: icarus.skip }, () => {
       assert.match(frame.text, /nowhere\.vh/);
     }));
 
-  test('I-V19: circular includes are reported promptly and do not hang', () =>
+  test('I-V19: circular includes are reported promptly, naming the loop, and do not hang', () =>
     withSession(async (client) => {
       const frame = await errorOf(client, CIRCULAR_INCLUDES, 'top.v', PROMPT_ERROR_MS);
       assert.equal(frame.stage, 'analyze');
+      assert.match(frame.text, /cycle: a\.vh → b\.vh → a\.vh/);
     }));
 
   test('I-V20: a project of 101 files is ready within a few seconds', () =>

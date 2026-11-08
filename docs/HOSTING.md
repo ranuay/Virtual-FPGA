@@ -53,7 +53,7 @@ build time (default `9010`). So:
 |---|---|---|
 | **OS** | Linux, macOS, or Windows with WSL2 | `scripts/start.sh` / `stop.sh` are POSIX shell; Windows hosts run them inside WSL. To test on native Windows, `scripts\start-windows.cmd` ([§ 7.5](#75-native-windows--test-it-on-this-machine)) |
 | **[Node.js](https://nodejs.org/)** | 18+ (20+ recommended) | Runs the backend and builds the page |
-| **[GHDL](https://ghdl.github.io/ghdl/)** | any build supporting `--std=08` and `-g<name>=<value>` | Verified against 5.0.1 and 6.0.0, mcode |
+| **[GHDL](https://ghdl.github.io/ghdl/)** | any build supporting `--std=08`, `-fsynopsys` and `-g<name>=<value>` | Verified against 5.0.1 and 6.0.0, mcode. `-fsynopsys` is what lets ACSL lab code import `ieee.std_logic_arith` and `std_logic_unsigned` |
 | **[Icarus Verilog](https://steveicarus.github.io/iverilog/)** (optional) | 12.0 or newer; `iverilog` and `vvp` on the service's `PATH` | Verified against 12.0 and 13.0. Without it VHDL still runs and a Verilog run says the simulator is missing. Install it if students will use Verilog |
 | **Ports** | 2 open to clients | Default `5173` (page) and `9010` (backend). The Alpine installer uses `80` and `9010`. Docker, or any setup with the reverse proxy of [§ 8](#8-one-port-with-a-reverse-proxy), needs only `80` |
 | **CPU / RAM** | ~1 core and ~150 MB per *active* simulation | Every running session forks its own `ghdl` or `vvp` process |

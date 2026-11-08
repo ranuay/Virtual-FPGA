@@ -395,6 +395,238 @@ module keyCounter7Seg (
     assign HEX5_N = 7'b1111111;
 endmodule
 `;
+const UP_DOWN_COUNTER_VHD = `library ieee;
+use ieee.std_logic_1164.all;
+
+-- Press KEY0 to count up and KEY1 to count down; the digit wraps 0..9.
+-- The count is shown on HEX0_N; the other displays stay blank.
+-- CLOCK_500Hz is provided by HDLBoard: one press is one step at that rate.
+entity upDownCounter7Seg is
+    port (
+        CLOCK_500Hz : in  std_logic;
+        KEY_N       : in  std_logic_vector(3 downto 0);
+        HEX0_N      : out std_logic_vector(6 downto 0);
+        HEX1_N      : out std_logic_vector(6 downto 0);
+        HEX2_N      : out std_logic_vector(6 downto 0);
+        HEX3_N      : out std_logic_vector(6 downto 0);
+        HEX4_N      : out std_logic_vector(6 downto 0);
+        HEX5_N      : out std_logic_vector(6 downto 0)
+    );
+end entity upDownCounter7Seg;
+
+architecture rtl of upDownCounter7Seg is
+
+    -- One digit (0..9) to its segments, active low: bit 0 is segment a,
+    -- bit 6 is segment g, and '0' lights a segment.
+    function to_segments(digit : integer range 0 to 9) return std_logic_vector is
+    begin
+        case digit is
+            when 0 => return "1000000";
+            when 1 => return "1111001";
+            when 2 => return "0100100";
+            when 3 => return "0110000";
+            when 4 => return "0011001";
+            when 5 => return "0010010";
+            when 6 => return "0000010";
+            when 7 => return "1111000";
+            when 8 => return "0000000";
+            when 9 => return "0010000";
+        end case;
+    end function;
+
+    signal count : integer range 0 to 9 := 0;
+    -- The keys as they were on the previous clock edge: a press is the edge
+    -- where a key goes from released ('1') to pressed ('0').
+    signal key_prev : std_logic_vector(1 downto 0) := "11";
+
+begin
+
+    process (CLOCK_500Hz)
+    begin
+        if rising_edge(CLOCK_500Hz) then
+            key_prev <= KEY_N(1 downto 0);
+
+            if key_prev(0) = '1' and KEY_N(0) = '0' then        -- KEY0: count up
+                -- Tested before adding: 9 + 1 leaves the subtype's range.
+                if count = 9 then
+                    count <= 0;
+                else
+                    count <= count + 1;
+                end if;
+            elsif key_prev(1) = '1' and KEY_N(1) = '0' then     -- KEY1: count down
+                if count = 0 then
+                    count <= 9;
+                else
+                    count <= count - 1;
+                end if;
+            end if;
+        end if;
+    end process;
+
+    HEX0_N <= to_segments(count);
+
+    -- Unused displays: all segments off (active low).
+    HEX1_N <= (others => '1');
+    HEX2_N <= (others => '1');
+    HEX3_N <= (others => '1');
+    HEX4_N <= (others => '1');
+    HEX5_N <= (others => '1');
+
+end architecture rtl;
+`;
+
+const UP_DOWN_COUNTER_V = `// Press KEY0 to count up and KEY1 to count down; the digit wraps 0..9.
+// The count is shown on HEX0_N; the other displays stay blank.
+// CLOCK_500Hz is provided by HDLBoard: one press is one step at that rate.
+module upDownCounter7Seg (
+    input  wire        CLOCK_500Hz,
+    input  wire [3:0]  KEY_N,
+    output wire [6:0]  HEX0_N,
+    output wire [6:0]  HEX1_N,
+    output wire [6:0]  HEX2_N,
+    output wire [6:0]  HEX3_N,
+    output wire [6:0]  HEX4_N,
+    output wire [6:0]  HEX5_N
+);
+    // One digit (0..9) to its segments, active low: bit 0 is segment a,
+    // bit 6 is segment g, and 0 lights a segment.
+    function [6:0] to_segments(input [3:0] digit);
+        case (digit)
+            4'd0: to_segments = 7'b1000000;
+            4'd1: to_segments = 7'b1111001;
+            4'd2: to_segments = 7'b0100100;
+            4'd3: to_segments = 7'b0110000;
+            4'd4: to_segments = 7'b0011001;
+            4'd5: to_segments = 7'b0010010;
+            4'd6: to_segments = 7'b0000010;
+            4'd7: to_segments = 7'b1111000;
+            4'd8: to_segments = 7'b0000000;
+            4'd9: to_segments = 7'b0010000;
+            default: to_segments = 7'b1111111;
+        endcase
+    endfunction
+
+    reg [3:0] count = 4'd0;
+    // The keys as they were on the previous clock edge: a press is the edge
+    // where a key goes from released (1) to pressed (0).
+    reg [1:0] key_prev = 2'b11;
+
+    always @(posedge CLOCK_500Hz) begin
+        key_prev <= KEY_N;
+
+        if (key_prev[0] && !KEY_N[0]) begin             // KEY0: count up
+            count <= (count == 4'd9) ? 4'd0 : count + 4'd1;
+        end else if (key_prev[1] && !KEY_N[1]) begin    // KEY1: count down
+            count <= (count == 4'd0) ? 4'd9 : count - 4'd1;
+        end
+    end
+
+    assign HEX0_N = to_segments(count);
+
+    // Unused displays: all segments off (active low).
+    assign HEX1_N = 7'b1111111;
+    assign HEX2_N = 7'b1111111;
+    assign HEX3_N = 7'b1111111;
+    assign HEX4_N = 7'b1111111;
+    assign HEX5_N = 7'b1111111;
+endmodule
+`;
+
+const BCD_7SEG_VHD = `library ieee;
+use ieee.std_logic_1164.all;
+
+-- The number on SW3..SW0 is shown as one digit on HEX0_N; SW9..SW4 are not
+-- used. 0..9 show the digit and 10..15 leave the display blank.
+-- (The Bab 5 sheet has no arm for 0 or 9, so both of those show blank there.)
+entity bcd7Seg is
+    port (
+        SW     : in  std_logic_vector(9 downto 0);
+        HEX0_N : out std_logic_vector(6 downto 0);
+        HEX1_N : out std_logic_vector(6 downto 0);
+        HEX2_N : out std_logic_vector(6 downto 0);
+        HEX3_N : out std_logic_vector(6 downto 0);
+        HEX4_N : out std_logic_vector(6 downto 0);
+        HEX5_N : out std_logic_vector(6 downto 0)
+    );
+end entity bcd7Seg;
+
+architecture rtl of bcd7Seg is
+
+    -- Segment bits are gfedcba; a zero lights a segment.
+    signal segments : std_logic_vector(6 downto 0);
+
+begin
+
+    process (SW(3 downto 0))
+    begin
+        case SW(3 downto 0) is
+            when "0000" => segments <= "1000000";   -- 0
+            when "0001" => segments <= "1111001";   -- 1
+            when "0010" => segments <= "0100100";   -- 2
+            when "0011" => segments <= "0110000";   -- 3
+            when "0100" => segments <= "0011001";   -- 4
+            when "0101" => segments <= "0010010";   -- 5
+            when "0110" => segments <= "0000010";   -- 6
+            when "0111" => segments <= "1111000";   -- 7
+            when "1000" => segments <= "0000000";   -- 8
+            when "1001" => segments <= "0010000";   -- 9
+            when others => segments <= "1111111";   -- 10..15: blank
+        end case;
+    end process;
+
+    HEX0_N <= segments;
+
+    -- Unused displays: all segments off (active low).
+    HEX1_N <= (others => '1');
+    HEX2_N <= (others => '1');
+    HEX3_N <= (others => '1');
+    HEX4_N <= (others => '1');
+    HEX5_N <= (others => '1');
+
+end architecture rtl;
+`;
+
+const BCD_7SEG_V = `// The number on SW[3:0] is shown as one digit on HEX0_N; SW[9:4] are not
+// used. 0..9 show the digit and 10..15 leave the display blank.
+// (The Bab 5 sheet has no arm for 0 or 9, so both of those show blank there.)
+module bcd7Seg (
+    input  wire [9:0] SW,
+    output wire [6:0] HEX0_N,
+    output wire [6:0] HEX1_N,
+    output wire [6:0] HEX2_N,
+    output wire [6:0] HEX3_N,
+    output wire [6:0] HEX4_N,
+    output wire [6:0] HEX5_N
+);
+    // Segment bits are gfedcba; a zero lights a segment.
+    reg [6:0] segments;
+
+    always @* begin
+        case (SW[3:0])
+            4'd0: segments = 7'b1000000;
+            4'd1: segments = 7'b1111001;
+            4'd2: segments = 7'b0100100;
+            4'd3: segments = 7'b0110000;
+            4'd4: segments = 7'b0011001;
+            4'd5: segments = 7'b0010010;
+            4'd6: segments = 7'b0000010;
+            4'd7: segments = 7'b1111000;
+            4'd8: segments = 7'b0000000;
+            4'd9: segments = 7'b0010000;
+            default: segments = 7'b1111111;   // 10..15: blank
+        endcase
+    end
+
+    assign HEX0_N = segments;
+
+    // Unused displays: all segments off (active low).
+    assign HEX1_N = 7'b1111111;
+    assign HEX2_N = 7'b1111111;
+    assign HEX3_N = 7'b1111111;
+    assign HEX4_N = 7'b1111111;
+    assign HEX5_N = 7'b1111111;
+endmodule
+`;
 
 const AND_GATE_VHD = `library ieee;
 use ieee.std_logic_1164.all;
@@ -1307,6 +1539,8 @@ export const EXAMPLE_FILES: VhdlFile[] = [
   { id: 'blink_test', name: 'blinkTest.vhdl', folder: 'vhdl', content: BLINK_TEST_VHD },
   { id: 'key_counter_2_led', name: 'keyCouter2Led.vhdl', folder: 'vhdl', content: KEY_COUNTER_2_LED_VHD },
   { id: 'key_counter_7seg', name: 'keyCounter7Seg.vhdl', folder: 'vhdl', content: KEY_COUNTER_7SEG_VHD },
+  { id: 'up_down_counter_7seg', name: 'upDownCounter7Seg.vhdl', folder: 'vhdl', content: UP_DOWN_COUNTER_VHD },
+  { id: 'bcd_7seg', name: 'bcd7Seg.vhdl', folder: 'vhdl', content: BCD_7SEG_VHD },
   { id: 'and_gate', name: 'and_gate.vhdl', folder: 'vhdl', content: AND_GATE_VHD },
   { id: 'and_gate_tb', name: 'and_gate_tb.vhd', folder: 'vhdl', content: AND_GATE_TB_VHD },
   { id: 'and_gate_truthtable_tb', name: 'and_gate_truthtable_tb.vhd', folder: 'vhdl', content: AND_GATE_TRUTHTABLE_TB_VHD },
@@ -1317,6 +1551,8 @@ export const EXAMPLE_FILES: VhdlFile[] = [
   { id: 'blink_test_v', name: 'blinkTest.v', folder: 'verilog', content: BLINK_TEST_V },
   { id: 'key_counter_2_led_v', name: 'keyCouter2Led.v', folder: 'verilog', content: KEY_COUNTER_2_LED_V },
   { id: 'key_counter_7seg_v', name: 'keyCounter7Seg.v', folder: 'verilog', content: KEY_COUNTER_7SEG_V },
+  { id: 'up_down_counter_7seg_v', name: 'upDownCounter7Seg.v', folder: 'verilog', content: UP_DOWN_COUNTER_V },
+  { id: 'bcd_7seg_v', name: 'bcd7Seg.v', folder: 'verilog', content: BCD_7SEG_V },
   { id: 'and_gate_v', name: 'and_gate.v', folder: 'verilog', content: AND_GATE_V },
   { id: 'and_gate_tb_v', name: 'and_gate_tb.v', folder: 'verilog', content: AND_GATE_TB_V },
   { id: 'and_gate_truthtable_tb_v', name: 'and_gate_truthtable_tb.v', folder: 'verilog', content: AND_GATE_TRUTHTABLE_TB_V },

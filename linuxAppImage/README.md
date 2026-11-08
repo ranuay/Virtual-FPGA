@@ -265,8 +265,3 @@ Both affect Linux generally (`scripts/start.sh`, Docker), not only the AppImage:
 - The workflow has not run on GitHub yet. Its steps ran here one by one, and the release step's
   create/race/upload logic was run against a stand-in `gh`. Run it once from **Actions → Build Linux AppImage →
   Run workflow** before tagging a release. The Windows workflow's new race fallback is untested (no PowerShell here).
-- **Circular `` `include ``s are slow to report on Linux.** Icarus gives up only when it runs out of file
-  descriptors, which takes 0.02 s at `ulimit -n 1024`, ~0.9 s at 65536 (GitHub's runner), and ~7 s at 524288
-  (this desktop session). Integration test I-V19 expects 1 s, so the workflow runs the tests with
-  `ulimit -n 4096`. A real fix would be in the backend: detect the cycle before compiling, or lower the
-  limit for the compile.

@@ -31,7 +31,7 @@ Out of scope here: real-time mode, Tx, Verilog (see the overview, *Later*).
 
 ## 2. Background: today's batch flow
 
-- A top entity **without ports** (a testbench) runs in batch mode (`engines/ghdlEngine.ts`, `prepareBatch`): `ghdl -e --std=08 <tb>` then `ghdl -r --std=08 <tb>`, bounded by `BATCH_TIMEOUT_MS` (60 s), stdin closed.
+- A top entity **without ports** (a testbench) runs in batch mode (`engines/ghdlEngine.ts`, `prepareBatch`): `ghdl -e --std=08 -fsynopsys <tb>` then `ghdl -r --std=08 -fsynopsys <tb>`, bounded by `BATCH_TIMEOUT_MS` (60 s), stdin closed.
 - The simulator's stdout is split into lines (`runtime.ts`, `lineSplitter`; a trailing CR is removed) and passed to `Session.forwardOutputLine`, which sends them through `OutputLimiter` (200 lines/s) as `LOG` frames. The frontend (`hdlClient.ts`, `onLog`) shows them in the console.
 - Batch mode does **not** use the board testbench (`hdl_board_tb`), board polling or pacing. None of that is touched by this plan.
 - The editor has **no live linting**: diagnostics come only from a run (`editor_diagnostics_implementation_plan.md`, D-list). There is therefore no second source model that could flag `library hdlboard;` before GHDL has seen it.
@@ -290,11 +290,14 @@ The GUI shows `Hei!` in the tab "TX". A testbench with a free-running clock must
 ## 5. GHDL flow and the plugin library build step
 
 ```
-ghdl -a --std=08 --work=hdlboard <root>/hdlb_pkg.vhd <root>/uart_monitor.vhd    # NEW – only if a student file declares library hdlboard
-ghdl -a --std=08 <student files>                                                # unchanged (fixed-point analysis)
-ghdl -e --std=08 <testbench>                                                    # unchanged
-ghdl -r --std=08 <testbench>                                                    # unchanged
+ghdl -a --std=08 -fsynopsys --work=hdlboard <root>/hdlb_pkg.vhd <root>/uart_monitor.vhd    # NEW – only if a student file declares library hdlboard
+ghdl -a --std=08 -fsynopsys <student files>                                                # fixed-point analysis
+ghdl -e --std=08 -fsynopsys <testbench>
+ghdl -r --std=08 -fsynopsys <testbench>
 ```
+
+`--std=08 -fsynopsys` is `GHDL_OPTIONS` (`server/src/ghdl.ts`); `-fsynopsys` was added on
+2026-11-06 so the ACSL lab code's `ieee.std_logic_unsigned` imports analyse.
 
 All four run with the session directory as working directory, which is what the existing commands do (`ghdl()` in `ghdlEngine.ts`).
 
@@ -305,7 +308,7 @@ All four run with the session directory as working directory, which is what the 
 | **Which files** | When a student file declares `library hdlboard`, **all** shipped plugin files are analysed, in a fixed order given by a list in code (`hdlb_pkg.vhd` first). They are tiny (milliseconds), and a per-plugin dependency graph would add a parser for no gain. |
 | **Dependency detection** | `usesHdlboardLibrary(source)` in [`ts/pluginLine.ts`](impl_files_for_plugins/ts/pluginLine.ts): blank out comments (`--` and VHDL-2008 block comments), string literals and the character literal `'"'`, then match `\blibrary\b[^;]*\bhdlboard\b` case-insensitively. Covers `library ieee, hdlboard;`, several lines, odd whitespace and mixed case, and is not fooled by commented-out or quoted text. A `use hdlboard…` **without** a library clause is the student's own error; GHDL reports it. A full lexer is not needed because the grammar of a library clause is this simple; the function has 12 tests for the cases above. If the server's existing comment stripper (`portDetect.ts`) is reused, the tests carry over unchanged. |
 | **Clean-up** | `clearWorkLibrary` also removes every `hdlboard-obj*.cf` (a pattern, not the single name `-obj08`, so a different standard suffix is covered), so the library is rebuilt each run. |
-| **Missing or broken assets** | Missing plugin directory or file, or a failing `ghdl -a` on a plugin file, is `stage: 'internal'`, never shown against the student's code. The text names the file and the command: `Plugin library: could not analyse hdlb_pkg.vhd (ghdl -a --std=08 --work=hdlboard, plugin root C:\…\plugins\vhdl):` followed by GHDL's output, or `…plugin root not found` with the path that was tried. An incompatible GHDL fails in the same place with the same message. |
+| **Missing or broken assets** | Missing plugin directory or file, or a failing `ghdl -a` on a plugin file, is `stage: 'internal'`, never shown against the student's code. The text names the file and the command: `Plugin library: could not analyse hdlb_pkg.vhd (ghdl -a --std=08 -fsynopsys --work=hdlboard, plugin root C:\…\plugins\vhdl):` followed by GHDL's output, or `…plugin root not found` with the path that was tried. An incompatible GHDL fails in the same place with the same message. |
 | **Name clash** | A student entity called `uart_monitor` in `work` does not clash with `hdlboard.uart_monitor`. |
 | **Board mode** | The same step is harmless there, but board mode is out of scope here. |
 

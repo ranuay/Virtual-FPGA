@@ -11,7 +11,7 @@
 
 import { readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getGhdlExe, runBatch, startPersistentRun } from '../ghdl.js';
+import { GHDL_OPTIONS, getGhdlExe, runBatch, startPersistentRun } from '../ghdl.js';
 import { findEntityNames, findTopEntity, type TopEntity } from '../portDetect.js';
 import type { ErrorStage, VhdlFileInput } from '../protocol.js';
 import { runCommand, type CmdResult } from '../runtime.js';
@@ -26,7 +26,8 @@ import type { BoardFiles, BoardTiming, PlannedWave, PrepareRequest, PrepareResul
 import type { WaveFormat } from '../protocol.js';
 
 const TB_ENTITY = 'hdl_board_tb';
-const GHDL_STANDARD = '--std=08';
+/** `ghdl -a` / `-e` are expected to finish in seconds, so they run under the shared build timeout (§ 7.4). */
+const ghdl = (args: string[], dir: string): Promise<CmdResult> => runCommand({ cmd: getGhdlExe(), args, cwd: dir });
 
 /**
  * Where the testbench's real-time pacing grants come from on this platform. Windows has
@@ -35,14 +36,11 @@ const GHDL_STANDARD = '--std=08';
  */
 const PACING: RunPlan['pacing'] = process.platform === 'win32' ? 'stdin' : 'fifo';
 
-/** `ghdl -a` / `-e` are expected to finish in seconds, so they run under the shared build timeout (§ 7.4). */
-const ghdl = (args: string[], dir: string): Promise<CmdResult> => runCommand({ cmd: getGhdlExe(), args, cwd: dir });
-
 const failure = (stage: ErrorStage, text: string): PrepareResult => ({ ok: false, stage, text });
 
 /** The error text if `ghdl -a` rejects the file, `undefined` if it is analysed. */
 async function analyzeFile(dir: string, name: string): Promise<string | undefined> {
-  const result = await ghdl(['-a', GHDL_STANDARD, name], dir);
+  const result = await ghdl(['-a', ...GHDL_OPTIONS, name], dir);
   if (result.code === 0) return undefined;
   if (result.timedOut) return `Analysis of ${name} timed out.\n${result.err}`;
   return result.err || `ghdl -a failed on ${name} with no output.`;
@@ -122,7 +120,7 @@ async function ghdlBanner(dir: string): Promise<string | undefined> {
 
 /** A genuinely portless entity: no wrapper, run directly (see `runBatch`'s own doc comment). */
 async function prepareBatch(dir: string, entityName: string, notes: readonly string[]): Promise<PrepareResult> {
-  const elaborated = await ghdl(['-e', GHDL_STANDARD, entityName], dir);
+  const elaborated = await ghdl(['-e', ...GHDL_OPTIONS, entityName], dir);
   if (elaborated.code !== 0) return failure('elaborate', elaborated.err);
   return { ok: true, plan: batchPlan(dir, entityName, notes) };
 }
@@ -160,14 +158,14 @@ async function prepareBoard({ dir, top, topContent, board }: BoardTop, notes: re
   });
   writeFileSync(join(dir, `${TB_ENTITY}.vhdl`), testbench);
 
-  const analyzed = await ghdl(['-a', GHDL_STANDARD, `${TB_ENTITY}.vhdl`], dir);
+  const analyzed = await ghdl(['-a', ...GHDL_OPTIONS, `${TB_ENTITY}.vhdl`], dir);
   if (analyzed.code !== 0) {
     const explained = explainUnconnectedPorts(analyzed.err, source);
     if (explained !== undefined) return failure('elaborate', explained);
     return failure('internal', `Internal testbench build error:\n${analyzed.err}`);
   }
 
-  const elaborated = await ghdl(['-e', GHDL_STANDARD, TB_ENTITY], dir);
+  const elaborated = await ghdl(['-e', ...GHDL_OPTIONS, TB_ENTITY], dir);
   if (elaborated.code !== 0) {
     return failure(
       'elaborate',

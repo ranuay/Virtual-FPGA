@@ -35,6 +35,22 @@ export function getGhdlExe(): string {
 }
 
 /**
+ * The options every GHDL command gets, in one place because they have to agree on all
+ * three stages. `--std=08` is the language. `-fsynopsys` makes the legacy
+ * `ieee.std_logic_arith` / `std_logic_unsigned` / `std_logic_signed` packages that ACSL
+ * lab code is written against available at all; without it GHDL refuses the file that
+ * imports them ("use of synopsys package "std_logic_arith" needs the -fsynopsys
+ * option"). Analyse, elaborate and run each re-read the sources, so the flag is needed
+ * on all three — measured on GHDL 5.0.1: with `-a` alone the design analyses and then
+ * fails to elaborate and to run with that same message.
+ *
+ * It does not change GHDL's error text for ordinary mistakes, and a design that does
+ * not use the packages is unaffected (verified on 5.0.1 against the diagnostic fixtures
+ * and VHDL-2008 features). Do not add it to `--version`.
+ */
+export const GHDL_OPTIONS: readonly string[] = ['--std=08', '-fsynopsys'];
+
+/**
  * Starts the persistent, free-running simulation — Candidate A
  * (§ 5.4.1). Not awaited to completion: the process runs until `kill()`
  * is called (Stop/Reset/session teardown), which is the whole point of
@@ -54,7 +70,7 @@ export function startPersistentRun(
     ghdlExe,
     [
       '-r',
-      '--std=08',
+      ...GHDL_OPTIONS,
       entityName,
       `-ginput_file=${inputFile}`,
       `-goutput_file=${outputFile}`,
@@ -98,6 +114,6 @@ export function runBatch(
   runOptions: readonly string[] = [],
 ): BatchHandle {
   // Run options such as `--wave=` follow the entity name: they belong to the simulation, not to GHDL.
-  const child = spawn(ghdlExe, ['-r', '--std=08', entityName, ...runOptions], { cwd });
+  const child = spawn(ghdlExe, ['-r', ...GHDL_OPTIONS, entityName, ...runOptions], { cwd });
   return createBatchHandle(child, onOutput, timeoutMs);
 }

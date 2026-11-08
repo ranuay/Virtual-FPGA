@@ -222,9 +222,9 @@ browser receives.
 
 | Tool | Invocation (backend) | Frame | Shapes that can appear | Recognizers | Reveals? |
 |---|---|---|---|---|---|
-| GHDL | `ghdl -a --std=08 <file>` (analysis, per file) | `ERROR` stage `analyze` | `file:line:col:error\|warning:` + caret echo + `(…)` continuation | 1 | yes |
-| GHDL | `ghdl -e --std=08 <unit>` (elaboration) | `ERROR` stage `elaborate` | `file:line:col:warning:` + continuation; `<ghdl path>:error: …` without a place | 1 (the unplaced line matches none) | yes |
-| GHDL | `ghdl -r --std=08 <unit>` (run) | `LOG`, one line each | `file:line:col:@time:(assertion\|report level):`; `ghdl:error: … at file:line`; `ghdl:error: simulation failed` | 2, 3 | no |
+| GHDL | `ghdl -a --std=08 -fsynopsys <file>` (analysis, per file) | `ERROR` stage `analyze` | `file:line:col:error\|warning:` + caret echo + `(…)` continuation | 1 | yes |
+| GHDL | `ghdl -e --std=08 -fsynopsys <unit>` (elaboration) | `ERROR` stage `elaborate` | `file:line:col:warning:` + continuation; `<ghdl path>:error: …` without a place | 1 (the unplaced line matches none) | yes |
+| GHDL | `ghdl -r --std=08 -fsynopsys <unit>` (run) | `LOG`, one line each | `file:line:col:@time:(assertion\|report level):`; `ghdl:error: … at file:line`; `ghdl:error: simulation failed` | 2, 3 | no |
 | GHDL | wrapper build (`hdl_board_tb.vhdl`) | `ERROR` stage `internal` | shape 1, but the file is not a project file | 1, then dropped by § 4.4 | no |
 | Icarus | `iverilog -tstub …` and the full `iverilog -Wall …` compile, failing | `ERROR` stage `analyze` / `elaborate` | `file:line: error\|warning\|sorry:`, `file:line: syntax error`, `file:line: Include file … not found`, `file:line:      : note` | 5, 6, 7, 8 | yes |
 | Icarus | full compile, succeeding with warnings | `LOG` lines before the run | `file:line: warning:` | 6 | no |
@@ -1216,7 +1216,9 @@ Captured on 2026-09-29 with GHDL 4.1.0 (mcode) and Icarus Verilog 12.0 (Ubuntu
 24.04), each tool run the way the backend runs it: `cwd` = the directory holding
 the files, bare file names, `ghdl -a --std=08 <file>`, `ghdl -e --std=08 <unit>`,
 `ghdl -r --std=08 <unit>`, and `iverilog -Wall -Wno-timescale -I. -s <top> -o
-sim.vvp _hdlboard_ts.v <files>`, then `vvp -n -i sim.vvp`. Output is verbatim,
+sim.vvp _hdlboard_ts.v <files>`, then `vvp -n -i sim.vvp`. (`-fsynopsys` has since
+joined the GHDL options on all three stages; it changes no text for a design that does
+not import the legacy Synopsys packages, which none of these does.) Output is verbatim,
 stdout and stderr interleaved in arrival order. The source files are shown
 before each capture where the line numbers matter.
 

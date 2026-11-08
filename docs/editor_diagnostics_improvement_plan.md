@@ -11,8 +11,11 @@ error markers of [`editor_diagnostics_implementation_plan.md`](editor_diagnostic
 (phases 1–4, merged into `main` in 1.2.0), and calls that document *the markers plan*.
 Every GHDL message in this document was produced by running the real tools the
 product ships: **GHDL 5.0.1** (the Windows app's bundled `ghdl.exe`) and **GHDL 6.0.0**
-(the Docker image), with the backend's flags (`ghdl -a --std=08 <file>`). The two
-printed identical text for every case (§ 2.1). Nothing here was run on Icarus
+(the Docker image), with the backend's flags as they were (`ghdl -a --std=08 <file>`).
+`-fsynopsys` has since joined them on all three stages (2026-11-06, for the ACSL lab
+code); it adds nothing to the output of a design that does not import the legacy
+Synopsys packages, and every design here is one of those. The two GHDL builds printed
+identical text for every case (§ 2.1). Nothing here was run on Icarus
 Verilog; § 4.12 says what that means.
 
 **Revision 2** worked through a written review of revision 1 (a revised copy of this

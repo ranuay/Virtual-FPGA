@@ -81,6 +81,8 @@ export interface BoardPorts {
 export const LABELLED_ROLES = ['switches', 'pushbuttons', 'leds', 'sevenSegment'] as const;
 export type LabelledRole = (typeof LABELLED_ROLES)[number];
 export type BoardLabels = Readonly<Record<LabelledRole, string>>;
+/** A port's package pins, one per bit, least significant first. Empty when the board names none. */
+export type BoardPins = Readonly<Record<string, readonly string[]>>;
 
 /** A link to a board's design resources, shown in Settings › Board (D8). */
 export interface BoardResource {
@@ -98,6 +100,8 @@ export interface BoardDefinition {
   readonly ports: BoardPorts;
   /** Always complete: parseBoardFile fills in DEFAULT_LABELS. */
   readonly labels: BoardLabels;
+  /** The package pin of each bit of each port (PRD.md § 4.2); empty when the board names none. */
+  readonly pins: BoardPins;
   /** Empty when the board has none. */
   readonly resources: readonly BoardResource[];
   readonly origin: 'built-in' | 'user';

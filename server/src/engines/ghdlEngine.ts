@@ -17,12 +17,23 @@ import type { ErrorStage, VhdlFileInput } from '../protocol.js';
 import { runCommand, type CmdResult } from '../runtime.js';
 import { generateTestbench } from '../tbTemplate.js';
 import { boardTimingFor, TIMING_WITHOUT_CLOCK_50 } from './boardTiming.js';
-import { boardInputNames, boardOutputNames, declaresPort, type BoardIo } from './boardPorts.js';
+import { boardInputNames, boardOutputNames, type BoardIo } from './boardPorts.js';
 import { checkBoardPortShapes, shapeErrors, shapeNotes, type DeclaredPort } from './boardShapeCheck.js';
 import { explainUnconnectedPorts, planExtraPorts, type TopSource } from './extraPorts.js';
 import { ghdlPosition, portDeclarations } from './vhdlPorts.js';
 import { sameNameNotes } from './sameNameNotes.js';
-import type { BoardFiles, BoardTiming, PlannedWave, PrepareRequest, PrepareResult, RunPlan, SimEngine, WaveRequest } from './types.js';
+import { connectPorts, type PinMap } from './ioPins.js';
+import type {
+  BoardFiles,
+  BoardTiming,
+  DesignPort,
+  PlannedWave,
+  PrepareRequest,
+  PrepareResult,
+  RunPlan,
+  SimEngine,
+  WaveRequest,
+} from './types.js';
 import type { WaveFormat } from '../protocol.js';
 
 const TB_ENTITY = 'hdl_board_tb';
@@ -85,6 +96,11 @@ function withWave(result: PrepareResult, wave: WaveRequest | undefined): Prepare
   return { ok: true, plan: { ...result.plan, wave: { format: wave.vhdlFormat } } };
 }
 
+/** The plan's port list, for I/O Planning; a failed prepare carries nothing (PRD.md § 7.2). */
+function withPorts(result: PrepareResult, ports: readonly DesignPort[]): PrepareResult {
+  return result.ok ? { ok: true, plan: { ...result.plan, ports } } : result;
+}
+
 /** GHDL's option per waveform format (docs/waveform_viewer_spec.md § 7.3). Never `--vcd-4states`: U, W, L, H, - stay. */
 const WAVE_OPTION: Readonly<Record<WaveFormat, string>> = { ghw: '--wave=', vcd: '--vcd=' };
 
@@ -131,6 +147,8 @@ interface BoardTop {
   readonly top: TopEntity;
   readonly topContent: string;
   readonly board: BoardIo;
+  /** I/O Planning's pins (§ 7.6): which board port each design port drives. */
+  readonly pins?: PinMap;
 }
 
 /** The top's ports with their widths and where they are declared, for the width check (§ 8). */
@@ -142,11 +160,18 @@ function declaredPorts(source: TopSource): DeclaredPort[] {
   });
 }
 
+/** The top's ports as I/O Planning lists them (PRD.md § 7.2 step 2). */
+function designPorts(topContent: string, entityName: string): DesignPort[] {
+  return portDeclarations(topContent, entityName).map((port) => ({ name: port.name, direction: port.mode, width: port.width }));
+}
+
 /** A design with board ports: wrap it in the generated testbench, then elaborate that. */
-async function prepareBoard({ dir, top, topContent, board }: BoardTop, notes: readonly string[]): Promise<PrepareResult> {
+async function prepareBoard({ dir, top, topContent, board, pins }: BoardTop, notes: readonly string[]): Promise<PrepareResult> {
   // Ports the board does not have: the testbench holds an extra input at 0 or leaves it
   // open (`extraPorts.ts`), and GHDL's error about an open one is moved onto its declaration.
-  const source: TopSource = { fileName: top.fileName, content: topContent, entityName: top.name, ports: top.ports, board };
+  const source: TopSource = { fileName: top.fileName, content: topContent, entityName: top.name, ports: top.ports, board, pins };
+  // The wires after any pin (§ 7.6): which board port each design port actually drives.
+  const connected = connectPorts(designPorts(topContent, top.name), board, pins).connected;
   // A board port of the wrong width is said plainly, before GHDL would fail on the testbench.
   const shapes = checkBoardPortShapes(declaredPorts(source), board, 'vhdl');
   const widthErrors = shapeErrors(shapes);
@@ -155,6 +180,7 @@ async function prepareBoard({ dir, top, topContent, board }: BoardTop, notes: re
   const testbench = generateTestbench(top.name, top.ports, board, {
     pacingFromStdin: PACING === 'stdin',
     tiedInputs: extraPorts.tiedInputs,
+    pins,
   });
   writeFileSync(join(dir, `${TB_ENTITY}.vhdl`), testbench);
 
@@ -174,9 +200,9 @@ async function prepareBoard({ dir, top, topContent, board }: BoardTop, notes: re
     );
   }
 
-  // The same condition `tbTemplate.ts` uses to decide whether `clkgen` exists (§ 5.8),
-  // which is what decides how fast simulated time runs, and so how finely to poll.
-  const timing = boardTimingFor(declaresPort(top.ports, board.clock.port));
+  // The same condition `tbTemplate.ts` uses to decide whether `clkgen` exists (§ 5.8) —
+  // the clock is wired to *this* design only if a pin did not move it elsewhere.
+  const timing = boardTimingFor(connected.some(({ binding }) => binding.role === 'clock'));
   const banner = await ghdlBanner(dir);
   const messages = [...(banner === undefined ? [] : [banner]), ...notes, ...shapeNotes(shapes), ...extraPorts.warnings];
   return { ok: true, plan: boardPlan(dir, timing, messages) };
@@ -221,7 +247,7 @@ async function prepare(request: PrepareRequest): Promise<PrepareResult> {
 }
 
 /** Analyses the student's files, then decides how the top runs. */
-async function prepareAnalysed({ dir, files, topFile, runTarget, wave, board }: PrepareRequest): Promise<PrepareResult> {
+async function prepareAnalysed({ dir, files, topFile, runTarget, wave, board, pins }: PrepareRequest): Promise<PrepareResult> {
   // Every file is analysed before our own port scan, so a genuine syntax error gets
   // GHDL's real diagnosis under `analyze` instead of being intercepted early by
   // `findTopEntity`'s regex heuristic, which runs on source not yet known to be VHDL.
@@ -238,9 +264,10 @@ async function prepareAnalysed({ dir, files, topFile, runTarget, wave, board }: 
   if (reanalysisError !== undefined) return failure('analyze', reanalysisError);
   const notes = sameNameNotes({ unitKind: 'entity', names: [top.name], topFile: top.fileName, otherFiles: others });
 
-  if (top.ports.size === 0) return withWave(await prepareBatch(dir, top.name, notes), wave);
   const topContent = files.find((file) => file.name === top.fileName)?.content ?? '';
-  return prepareBoard({ dir, top, topContent, board }, notes);
+  const ports = designPorts(topContent, top.name);
+  if (top.ports.size === 0) return withPorts(withWave(await prepareBatch(dir, top.name, notes), wave), ports);
+  return withPorts(await prepareBoard({ dir, top, topContent, board, pins }, notes), ports);
 }
 
 /** File names arrive relative to the session directory; GHDL has always been given absolute paths. */

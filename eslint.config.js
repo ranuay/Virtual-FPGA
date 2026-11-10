@@ -50,6 +50,10 @@ const NEW_CODE = [
   'src/components/workbench/vhdlPackages.ts',
   'src/components/workbench/useClauseFix.ts',
   'src/components/workbench/useClauseFix.test.ts',
+  // The Vivado-style design flow (PRD.md § 7).
+  'src/components/workbench/designFlow.ts',
+  'src/components/workbench/designFlow.test.ts',
+  'src/components/workbench/DesignFlowPanel.tsx',
   'src/components/workbench/useQuickFix.ts',
   'src/components/workbench/extraRows.ts',
   'src/components/workbench/extraRows.test.ts',

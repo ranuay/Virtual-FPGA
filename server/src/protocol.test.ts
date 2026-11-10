@@ -61,3 +61,21 @@ describe('STIM', () => {
     }
   });
 });
+
+describe('FLOW-PIN', () => {
+  test('a port with a board port, and a port alone to clear the pin', () => {
+    assert.deepEqual(decodeClientFrame('FLOW-PIN LEDR LED0'), { verb: 'FLOW-PIN', port: 'LEDR', boardPort: 'LED0' });
+    assert.deepEqual(decodeClientFrame('FLOW-PIN LEDR'), { verb: 'FLOW-PIN', port: 'LEDR' });
+  });
+
+  test('decode and encode round-trip', () => {
+    for (const text of ['FLOW-PIN LEDR LED0', 'FLOW-PIN LEDR']) {
+      const frame = decodeClientFrame(text);
+      assert.equal(encodeClientFrame(frame as Parameters<typeof encodeClientFrame>[0]), text);
+    }
+  });
+
+  test('a frame without a port is a protocol error', () => {
+    assert.ok('message' in decodeClientFrame('FLOW-PIN'));
+  });
+});

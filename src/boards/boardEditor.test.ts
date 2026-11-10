@@ -16,6 +16,18 @@ it('round trips without filling optional defaults or changing array order', () =
   expect(readDocument(JSON.stringify(replaceBoard(original, original.boards[0])))).toEqual(original);
   expect(original.boards[0].labels).toBeUndefined();
 });
+it('drops the pins of a port the edit renamed, so the board still loads', () => {
+  const raw = changeAt(board('nexys-a7'), ['ports', 'pushbuttons', 'cross', 'up'], 'NEW_UP') as Record<string, unknown>;
+  expect(valueAt(raw, ['pins', 'BTNU'])).toBeUndefined();
+  expect(valueAt(raw, ['pins', 'NEW_UP'])).toBeUndefined();
+  expect(valueAt(raw, ['pins', 'CLK100MHZ'])).toEqual(['E3']);
+  expect(parsedDocument({ version: 2, boards: [raw] }).warnings).toEqual([]);
+});
+it('keeps the pins of every port the edit left alone, including one the draft renames without a shape change', () => {
+  const raw = changeAt(board('nexys-a7'), ['ports', 'leds', 'port'], 'LEDR') as Record<string, unknown>;
+  expect(valueAt(raw, ['pins', 'LED'])).toBeUndefined();
+  expect(Object.keys(valueAt(raw, ['pins']) as object)).toHaveLength(17);
+});
 it('updates one board and preserves extensions and other boards', () => {
   const file = { ...initialBoardDocument(), extension: { retained: true } };
   const raw = { ...file.boards[4], custom: { untouched: 3 } };

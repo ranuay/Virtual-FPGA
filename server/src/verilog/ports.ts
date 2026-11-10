@@ -15,6 +15,7 @@
  */
 
 import { boardPortKeys, type BoardIo } from '../engines/boardPorts.js';
+import { connectPorts, type PinMap } from '../engines/ioPins.js';
 
 /**
  * Comments and string literals, matched leftmost-first so a `//` inside a string is
@@ -108,23 +109,34 @@ export function parseStubPorts(stubText: string, top: string): PortsResult {
  * declared spelling is kept because the generated instance must connect by it.
  * The board's names come from the same table the VHDL side uses, without the legacy
  * `rst`: that is VHDL-only tolerance (§ 5.2), and there is no legacy Verilog to accommodate.
+ *
+ * With `pins`, the student's choice decides (§ 7.6): the pinned port is connected to the
+ * board port chosen, and the name it would have matched is connected to whatever took it.
  */
-export function boardPortSpellings(ports: readonly Port[], board: BoardIo): Map<string, string> {
-  const boardNames = boardPortKeys(board);
-  const spellings = new Map<string, string>();
-  for (const { name } of ports) {
-    const boardName = name.toLowerCase();
-    if (boardNames.has(boardName)) spellings.set(boardName, name);
+export function boardPortSpellings(ports: readonly Port[], board: BoardIo, pins?: PinMap): Map<string, string> {
+  if (pins === undefined || pins.size === 0) {
+    const boardNames = boardPortKeys(board);
+    const spellings = new Map<string, string>();
+    for (const { name } of ports) {
+      const boardName = name.toLowerCase();
+      if (boardNames.has(boardName)) spellings.set(boardName, name);
+    }
+    return spellings;
   }
-  return spellings;
+  const pinPorts = ports.map(({ name, direction, width }) => ({
+    name,
+    direction: direction === 'output' ? 'out' : direction === 'input' ? 'in' : direction,
+    width,
+  }));
+  return new Map(connectPorts(pinPorts, board, pins).connected.map(({ binding, name }) => [binding.key, name]));
 }
 
 /**
- * True when the top declares at least one board port. "Has ports" is not the test:
- * a testbench can have ports of its own (§ 5.3).
+ * True when the design is wired to a board port — by name, or by a pin (§ 7.6). "Has
+ * ports" is not the test: a testbench can have ports of its own (§ 5.3).
  */
-export function isBoardDesign(ports: readonly Port[], board: BoardIo): boolean {
-  return boardPortSpellings(ports, board).size > 0;
+export function isBoardDesign(ports: readonly Port[], board: BoardIo, pins?: PinMap): boolean {
+  return boardPortSpellings(ports, board, pins).size > 0;
 }
 
 export type TopChoice =

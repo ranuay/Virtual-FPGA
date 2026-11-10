@@ -70,6 +70,13 @@ export type ClientFrame =
   | { verb: 'WAVE-GET'; run: number }
   | { verb: 'RESET' }
   | { verb: 'STOP' }
+  // Runs one step of the Vivado-style design flow (PRD.md § 7, engines/designFlow.ts).
+  // `RUN`'s body and inline tail are optional: with them, the step works on the editor's
+  // current sources instead of waiting for a RUN to have uploaded them.
+  | { verb: 'FLOW-RUN'; step: string; files?: VhdlFileInput[]; topFile?: string; runTarget?: string }
+  // I/O Planning's pin for one design port (PRD.md § 7.6): the board port it drives, or
+  // none to go back to the name match. Answered with a `FLOW` frame.
+  | { verb: 'FLOW-PIN'; port: string; boardPort?: string }
   | { verb: 'PING' };
 
 export type ServerFrame =
@@ -86,6 +93,8 @@ export type ServerFrame =
   | { verb: 'WAVE-END'; run: number }
   // That run's waveform is not available (a newer run replaced it, or it was never written).
   | { verb: 'WAVE-NONE'; run: number }
+  // The design flow's whole state (PRD.md § 7.3, § 4.6): one JSON body, sent after every change.
+  | { verb: 'FLOW'; state: string }
   | { verb: 'PONG' };
 
 export interface ProtocolError {
@@ -224,6 +233,22 @@ export function decodeClientFrame(text: string): ClientFrame | ProtocolError {
       return { verb: 'RESET' };
     case 'STOP':
       return { verb: 'STOP' };
+    case 'FLOW-RUN': {
+      const [step, ...rest] = inline.split(' ');
+      if (!step) return { message: 'FLOW-RUN requires a step name' };
+      const files = splitRunBody(body);
+      if (isProtocolError(files)) return files;
+      const { topFile, runTarget } = parseRunHeader(rest.join(' '));
+      if (files.length === 0) return topFile === undefined ? { verb: 'FLOW-RUN', step } : { verb: 'FLOW-RUN', step, topFile };
+      return runTarget === undefined ? { verb: 'FLOW-RUN', step, files, topFile } : { verb: 'FLOW-RUN', step, files, topFile, runTarget };
+    }
+    case 'FLOW-PIN': {
+      const [port = '', boardPort] = inline.split(' ');
+      if (port === '') return { message: 'FLOW-PIN requires a port name' };
+      return boardPort === undefined || boardPort === ''
+        ? { verb: 'FLOW-PIN', port }
+        : { verb: 'FLOW-PIN', port, boardPort };
+    }
     case 'PING':
       return { verb: 'PING' };
     default:
@@ -273,6 +298,15 @@ export function encodeClientFrame(frame: ClientFrame): string {
       return 'RESET';
     case 'STOP':
       return 'STOP';
+    case 'FLOW-RUN': {
+      const target = frame.topFile && frame.runTarget ? ` @${frame.runTarget}` : '';
+      const head = frame.topFile ? `FLOW-RUN ${frame.step} ${frame.topFile}${target}` : `FLOW-RUN ${frame.step}`;
+      if (frame.files === undefined) return head;
+      const body = frame.files.map((f) => `@@FILE ${f.name}@@\n${f.content}`).join('\n');
+      return `${head}\n${body}`;
+    }
+    case 'FLOW-PIN':
+      return frame.boardPort === undefined ? `FLOW-PIN ${frame.port}` : `FLOW-PIN ${frame.port} ${frame.boardPort}`;
     case 'PING':
       return 'PING';
   }
@@ -359,6 +393,8 @@ export function encodeServerFrame(frame: ServerFrame): string {
       return `WAVE-END ${frame.run}`;
     case 'WAVE-NONE':
       return `WAVE-NONE ${frame.run}`;
+    case 'FLOW':
+      return `FLOW\n${frame.state}`;
     case 'PONG':
       return 'PONG';
   }

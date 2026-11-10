@@ -17,6 +17,9 @@ function buttonSettings(buttons: ButtonGroup) {
   return { ...groupSettings(group), activeLow };
 }
 
+/** The board's pin table, or nothing: a board that names no pins writes no `pins` field. */
+const pinsSetting = (board: BoardDefinition) => Object.keys(board.pins).length > 0 ? { pins: board.pins } : {};
+
 /** The version-2 file vocabulary, including resolved defaults, without runtime metadata. */
 export function boardImportSettings(board: BoardDefinition) {
   const { ports } = board;
@@ -44,6 +47,7 @@ export function boardImportSettings(board: BoardDefinition) {
       } } : {}),
     },
     labels: board.labels,
+    ...pinsSetting(board),
     resources: board.resources,
   };
 }

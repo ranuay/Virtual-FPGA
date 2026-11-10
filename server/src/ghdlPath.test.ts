@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { resolveGhdlExe } from './ghdlPath.js';
+import { explainGhdlFailure, resolveGhdlExe } from './ghdlPath.js';
 
 const WINDOWS = 'win32';
 const LINUX = 'linux';
@@ -36,5 +36,18 @@ describe('resolveGhdlExe', () => {
 
   test('treats empty settings as unset', () => {
     assert.equal(resolveGhdlExe({ GHDL_DIR: '', GHDL_EXE: '' }, { ghdlDir: '' }, LINUX), 'ghdl');
+  });
+});
+
+describe('explainGhdlFailure', () => {
+  test('turns Node\'s spawn failure into what to install or set', () => {
+    const text = explainGhdlFailure('Error: spawn ghdl ENOENT');
+    assert.match(text, /GHDL was not found/);
+    assert.match(text, /GHDL_DIR \/ GHDL_EXE/);
+  });
+
+  test("leaves GHDL's own diagnosis alone", () => {
+    const ghdlSays = 'top.vhdl:3:5:error: no declaration for "foo"';
+    assert.equal(explainGhdlFailure(ghdlSays), ghdlSays);
   });
 });

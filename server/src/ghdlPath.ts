@@ -35,3 +35,19 @@ export function resolveGhdlExe(
   if (dir !== undefined) return ghdlInDir(dir, platform);
   return setting(options.ghdlExe) ?? setting(env.GHDL_EXE) ?? PROGRAM_ON_PATH;
 }
+
+/** Node's message when the program itself cannot be started, e.g. `Error: spawn ghdl ENOENT`. */
+const PROGRAM_NOT_FOUND = /spawn .* ENOENT/;
+
+/**
+ * `ghdl`'s own words, or — when GHDL itself is not installed — what can be done about it.
+ * `spawn ghdl ENOENT` is Node talking to itself; the two settings `resolveGhdlExe` reads
+ * are the whole fix, so they are named.
+ */
+export function explainGhdlFailure(text: string): string {
+  if (!PROGRAM_NOT_FOUND.test(text)) return text;
+  return (
+    'GHDL was not found, so VHDL designs cannot run. Install it (Linux: the "ghdl" package ' +
+    'of your distribution; the Windows app bundles it), or set GHDL_DIR / GHDL_EXE.'
+  );
+}

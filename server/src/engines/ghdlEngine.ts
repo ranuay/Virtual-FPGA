@@ -12,6 +12,7 @@
 import { readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { GHDL_OPTIONS, getGhdlExe, runBatch, startPersistentRun } from '../ghdl.js';
+import { explainGhdlFailure } from '../ghdlPath.js';
 import { findEntityNames, findTopEntity, type TopEntity } from '../portDetect.js';
 import type { ErrorStage, VhdlFileInput } from '../protocol.js';
 import { runCommand, type CmdResult } from '../runtime.js';
@@ -37,8 +38,16 @@ import type {
 import type { WaveFormat } from '../protocol.js';
 
 const TB_ENTITY = 'hdl_board_tb';
-/** `ghdl -a` / `-e` are expected to finish in seconds, so they run under the shared build timeout (§ 7.4). */
-const ghdl = (args: string[], dir: string): Promise<CmdResult> => runCommand({ cmd: getGhdlExe(), args, cwd: dir });
+/**
+ * Every bounded GHDL command — analysis, elaboration, `--version` — goes through here, so a
+ * GHDL that is not installed is explained once, in words a student can act on, instead of
+ * Node's `spawn ghdl ENOENT`. The persistent run never needs it: a missing `ghdl` has
+ * already failed the analysis that precedes it.
+ */
+const ghdl = async (args: string[], dir: string): Promise<CmdResult> => {
+  const result = await runCommand({ cmd: getGhdlExe(), args, cwd: dir });
+  return { ...result, err: explainGhdlFailure(result.err) };
+};
 
 /**
  * Where the testbench's real-time pacing grants come from on this platform. Windows has

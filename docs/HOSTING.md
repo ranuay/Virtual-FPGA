@@ -995,7 +995,7 @@ same set through nginx, so it tests the WebSocket proxy too.
 | Page loads, board stays dark, console says the backend is unreachable | The backend port isn't open to the client. The page port being open is not enough — see [§ 1](#1-how-it-fits-together) |
 | Works on the host, not from other machines | Firewall ([§ 10](#10-open-the-firewall)), or WSL networking ([§ 6](#windows-wsl2)) |
 | Board dark only over HTTPS | Mixed content — [§ 8](#8-one-port-with-a-reverse-proxy) |
-| `ghdl not found on PATH` | GHDL isn't installed, or isn't on the service user's `PATH` — set `GHDL_EXE` to its absolute path |
+| `GHDL was not found, so VHDL designs cannot run` | GHDL isn't installed, or isn't on the service user's `PATH` — install it (`apt install ghdl`, `dnf install ghdl`, `brew install ghdl-mcode`) or set `GHDL_EXE` to its absolute path |
 | `Icarus Verilog (iverilog) was not found, so Verilog designs cannot run` | Icarus isn't installed, or isn't on the service user's `PATH` — install it (`apt install iverilog`, `apk add iverilog`, `brew install icarus-verilog`) or set `IVERILOG_EXE`; VHDL is unaffected |
 | Verilog console starts with a warning about an untested Icarus version | The installed Icarus is neither 12.x nor 13.x. It usually still works; install 13.0 if compiling or running misbehaves |
 | `EADDRINUSE` | Something already holds the port: `ss -ltnp \| grep 9010` (`netstat -ltn` on Alpine), or an earlier run — `./scripts/stop.sh` |

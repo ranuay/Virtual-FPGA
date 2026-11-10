@@ -10,6 +10,7 @@ import { decodeBoardBody, encodeBoardBody } from './boardFrame.js';
 import type { PrepareRequest, PrepareResult, RunPlan, SimEngine } from './engines/types.js';
 import type { ServerFrame } from './protocol.js';
 import { Session } from './session.js';
+import { BOARD_FRAMES } from './testSupport/boards.js';
 
 const FILES = [{ name: 'top.vhdl', content: 'entity top is end entity;' }];
 
@@ -63,7 +64,7 @@ function lastFlow(frames: readonly ServerFrame[]) {
   return JSON.parse(last.state) as {
     steps: Array<{ step: string; status: string; educational: boolean }>;
     board: string;
-    ports: Array<{ name: string; constraint?: string; pin?: string; choices?: string[] }>;
+    ports: Array<{ name: string; constraint?: string; pin?: string; bits?: string[]; choices?: string[] }>;
     canProgram: boolean;
   };
 }
@@ -315,8 +316,29 @@ describe('the design flow in a session', () => {
       assert.deepEqual(ports.find((port) => port.name === 'LEDR')?.choices, ['LEDR']);
     });
   });
+  test('a multiplexed display offers its segment word, so one port drives CA…CG or CA…DP', async () => {
+    const ports: RunPlan['ports'] = [
+      { name: 'seg7', direction: 'out', width: 7 },
+      { name: 'seg8', direction: 'out', width: 8 },
+    ];
+    const { engine } = preparingEngine(ports);
+    await withFlow(engine, async (session, frames) => {
+      session.handleBoard(decodeBoardBody(BOARD_FRAMES['nexys-a7'] ?? ''));
+      await session.handleRun(FILES, 'top.vhdl');
+      await session.handleFlowRun('synthesis');
+      const rows = lastFlow(frames).ports;
+      assert.deepEqual(rows.find((port) => port.name === 'seg7')?.choices, ['CA…CG']);
+      assert.deepEqual(rows.find((port) => port.name === 'seg8')?.choices, ['AN', 'CA…DP']);
+      session.handleFlowPin('seg8', 'CA…DP');
+      await session.handleFlowRun('ioPlanning');
+      const pinned = lastFlow(frames).ports.find((port) => port.name === 'seg8');
+      assert.equal(pinned?.pin, 'CA…DP', 'the pin names the word, not one of its bits');
+      assert.equal(pinned?.constraint, 'CA…DP', 'I/O Planning writes the word, not its last bit');
+      assert.deepEqual(pinned?.bits, ['CA', 'CB', 'CC', 'CD', 'CE', 'CF', 'CG', 'DP']);
+      assert.match(logged(frames), /seg8 -> CA…DP/);
+    });
+  });
 });
-
 /** A board whose port names differ from the Default board's, so the match cannot be a coincidence. */
 const boardWithLeds = {
   clock: { port: 'clk', mhz: 100 },

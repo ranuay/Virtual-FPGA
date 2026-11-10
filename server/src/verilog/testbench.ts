@@ -12,8 +12,8 @@
  * layout, a multiplexed display's decoder — comes from `boardText.ts`
  * (docs/board_io_v2_spec.md § 7.3).
  */
+import { boardBindings, type BoardBinding, type BoardIo } from '../engines/boardPorts.js';
 
-import { boardBindings, type BoardIo } from '../engines/boardPorts.js';
 import { stateLength, stimLength } from '../engines/boardShape.js';
 import {
   boardBitsDeclaration,
@@ -33,13 +33,28 @@ type Spellings = ReadonlyMap<string, string>;
  * The instance of the student's top module, connecting each board port it declares
  * by the spelling it declared (`.Clock_50(clk_sig)`, `.btnC(key_sig[0])`), because
  * Verilog names are case-sensitive.
+ *
+ * Consecutive board ports the design declares under one spelling are one connection: a
+ * port pinned to the display's segment word (`CA`…`DP`) is one 8-bit port, so its bits
+ * are concatenated, most significant first, rather than connected eight times.
  */
 export function instantiation(top: string, spellings: Spellings, board: BoardIo): string {
-  const connections = boardBindings(board).flatMap((binding) => {
+  const runs: Array<{ declared: string; bits: BoardBinding[] }> = [];
+  for (const binding of boardBindings(board)) {
     const declared = spellings.get(binding.key);
-    return declared === undefined ? [] : [`.${declared}(${verilogActual(binding)})`];
-  });
+    if (declared === undefined) continue;
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.declared === declared) last.bits.push(binding);
+    else runs.push({ declared, bits: [binding] });
+  }
+  const connections = runs.map(({ declared, bits }) => `.${declared}(${actual(bits)})`);
   return `  ${top} uut (${connections.join(', ')});`;
+}
+
+/** `seg_sig[0]` for one board port; `{dp_sig, seg_sig[6], …}` for a word, most significant bit first. */
+function actual(bits: readonly BoardBinding[]): string {
+  if (bits.length === 1) return verilogActual(bits[0]);
+  return `{${[...bits].reverse().map(verilogActual).join(', ')}}`;
 }
 
 /**

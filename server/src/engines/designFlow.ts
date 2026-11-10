@@ -21,8 +21,8 @@
  * `done` when their precondition holds and their result exists. Everything else
  * follows § 7.3's five statuses.
  */
-import { boardBindings, type BoardIo } from './boardPorts.js';
-import { pinChoices } from './ioPins.js';
+import type { BoardIo } from './boardPorts.js';
+import { pinChoices, pinTargets } from './ioPins.js';
 import type { DesignPort } from './types.js';
 
 /** The executable steps. `synthesis`…`program` are the seven rows of PRD.md § 7.2. */
@@ -212,6 +212,8 @@ export interface FlowWirePort {
   readonly constraint?: string;
   /** The board port the student pinned it to, which I/O Planning has not written yet. */
   readonly pin?: string;
+  /** When the pin covers a word (the display's segments): the board ports its bits are, least significant first. */
+  readonly bits?: readonly string[];
   /** The board ports this port may be pinned to (§ 7.6's direction and width rules). */
   readonly choices?: readonly string[];
 }
@@ -237,21 +239,26 @@ export interface FlowWiring {
 /** The flow as the panel shows it, in one frame (§ 7.3). */
 export function flowWire(state: FlowState, ports: readonly DesignPort[], wiring: FlowWiring): FlowWire {
   const { constraints, board, pins = new Map() } = wiring;
-  const names = new Map(board === undefined ? [] : boardBindings(board).map((binding) => [binding.key, binding.name]));
+  const targets = new Map(board === undefined ? [] : pinTargets(board).map((choice) => [choice.key, choice]));
   return {
     steps: FLOW_STEPS.map((step) => ({ step, status: state.statuses[step], educational: isEducational(step) })),
     board: state.board,
     ports: ports.map((port) => {
       const constraint = constraints.get(port.name);
       const pinned = pins.get(port.name.toLowerCase());
-      const pin = pinned === undefined ? undefined : (names.get(pinned) ?? pinned);
-      const choices = board === undefined ? undefined : pinChoices(port, board).map((binding) => binding.name);
+      // The pin wins; without one, the constraint I/O Planning wrote names the same board port.
+      const choice = targets.get(pinned ?? (constraint ?? '').toLowerCase());
+      const pin = pinned === undefined ? undefined : (choice?.label ?? pinned);
+      // A word pin's package pins are its bits', which the board lists one port at a time.
+      const word = choice === undefined || choice.bits.length < 2 ? undefined : choice.bits.map((binding) => binding.name);
+      const choices = board === undefined ? undefined : pinChoices(port, board).map((option) => option.label);
       return {
         name: port.name,
         direction: port.direction,
         width: port.width,
         ...(constraint === undefined ? {} : { constraint }),
         ...(pin === undefined ? {} : { pin }),
+        ...(word === undefined ? {} : { bits: word }),
         ...(choices === undefined ? {} : { choices }),
       };
     }),

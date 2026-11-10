@@ -48,7 +48,7 @@ import { selectEngine } from './engines/selectEngine.js';
 import { firstUnsafeName } from './engines/sourceNames.js';
 
 import { DEFAULT_BOARD_IO, type BoardIo } from './engines/boardPorts.js';
-import { connectPorts } from './engines/ioPins.js';
+import { connectPorts, pinTargets } from './engines/ioPins.js';
 import { describeStimFields, sameStimMeaning, stateLength, stimLength } from './engines/boardShape.js';
 import type { DecodedBoard } from './boardFrame.js';
 import { type ErrorStage, type ServerFrame, type StimStep, type VhdlFileInput, type WaveFormat, type WaveStatus } from './protocol.js';
@@ -511,7 +511,9 @@ export class Session {
   /** Writes the constraint table from the current wiring; the rows it wrote, for the log. */
   private writeConstraints(board: BoardIo): readonly string[] {
     const { connected } = connectPorts(this.flowPorts, board, this.pins);
-    this.constraints = new Map(connected.map(({ name, binding }) => [name, binding.name]));
+    // A pin on the display's segment word constrains the port to that word, not to one bit of it.
+    const labels = new Map(pinTargets(board).flatMap((choice) => choice.bits.map((binding) => [binding.key, choice.label] as const)));
+    this.constraints = new Map(connected.map(({ name, binding }) => [name, labels.get(binding.key) ?? binding.name]));
     return [...this.constraints].map(([port, boardPort]) => `${port} -> ${boardPort}`);
   }
 

@@ -40,6 +40,17 @@ describe('instantiation', () => {
   test('connects the 500 Hz clock, which only some designs declare', () => {
     assert.match(instantiation('top', spelled('CLOCK_500Hz'), DEFAULT_BOARD_IO), /\.CLOCK_500Hz\(clk500_sig\)/);
   });
+
+  // § 7.6: the segments the board spells as eight scalars, pinned to one 8-bit port, are
+  // one connection — concatenated most significant first, not eight.
+  test('connects a port pinned to the segment word as one concatenation', () => {
+    const segments = spelled('CA', 'CB', 'CC', 'CD', 'CE', 'CF', 'CG', 'DP');
+    const one = new Map([...segments].map(([key]) => [key, 'seg8']));
+    assert.match(
+      instantiation('top', one, NEXYS_A7_BOARD_IO),
+      /\.seg8\(\{dp_sig, seg_sig\[6\], seg_sig\[5\], seg_sig\[4\], seg_sig\[3\], seg_sig\[2\], seg_sig\[1\], seg_sig\[0\]\}\)/,
+    );
+  });
 });
 
 describe('tieOffs', () => {

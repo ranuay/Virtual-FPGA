@@ -19,7 +19,19 @@ const flowOf = (statuses: Partial<Record<FlowStep, string>>, extra: Record<strin
     }),
   );
 
-const PINS = { BTNC: ['N17'], SW: ['J15', 'L16'], CLOCK_50: ['E3'] };
+const PINS = {
+  BTNC: ['N17'],
+  SW: ['J15', 'L16'],
+  CLOCK_50: ['E3'],
+  CA: ['T10'],
+  CB: ['R10'],
+  CC: ['K16'],
+  CD: ['K13'],
+  CE: ['P15'],
+  CF: ['T11'],
+  CG: ['L18'],
+  DP: ['H15'],
+};
 
 const render = (flow: FlowWire | undefined, busy = false, onPin: (port: string, boardPort: string | undefined) => void = () => {}): string =>
   renderToStaticMarkup(<DesignFlowPanel flow={flow ?? null} pins={PINS} busy={busy} onRun={() => {}} onPin={onPin} />);
@@ -109,6 +121,40 @@ describe('DesignFlowPanel', () => {
     expect(html).toContain('<code>E3</code>');
     // A port pinned to nothing has no package pin to name.
     expect(html.match(/<code>—<\/code>/g)).toHaveLength(1);
+  });
+
+  it('shows a word pin as one board port, and its package pins as the range its bits name', () => {
+    const html = render(
+      flowOf(
+        { synthesis: 'done', ioPlanning: 'done' },
+        {
+          ports: [
+            {
+              name: 'seg',
+              direction: 'out',
+              width: 8,
+              choices: ['CA…CG', 'CA…DP'],
+              pin: 'CA…DP',
+              constraint: 'CA…DP',
+              bits: ['CA', 'CB', 'CC', 'CD', 'CE', 'CF', 'CG', 'DP'],
+            },
+          ],
+        },
+      ),
+    );
+    expect(html).toContain('<option value="CA…DP" selected="">CA…DP</option>');
+    expect(html).toContain('<code>T10…H15</code>');
+    // A board that names no pins for the word's bits shows nothing, not half a range.
+    const bare = renderToStaticMarkup(
+      <DesignFlowPanel
+        flow={flowOf({ synthesis: 'done' }, { ports: [{ name: 'seg', direction: 'out', width: 8, pin: 'CA…DP', bits: ['CA', 'DP'] }] }) ?? null}
+        pins={{}}
+        busy={false}
+        onRun={() => {}}
+        onPin={() => {}}
+      />,
+    );
+    expect(bare).toContain('<code>—</code>');
   });
 
   it('names the board stage, so a stale board is visible without reading the log', () => {

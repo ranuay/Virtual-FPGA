@@ -168,8 +168,12 @@ function PortTable({ flow, pins, busy, onPin }: { flow: FlowWire; pins: BoardPin
  * student can find the same pin on the real Nexys A7 and in the master XDC.
  */
 function pinsText(pins: BoardPins, port: FlowWirePort): string {
-  const list = pinsOf(pins, port.pin ?? port.constraint, port.width ?? 1);
-  if (list === undefined) return '—';
+  // A word pin's label is the run of board ports (`CA…DP`), which names no pins itself.
+  const list =
+    port.bits === undefined
+      ? pinsOf(pins, port.pin ?? port.constraint, port.width ?? 1)
+      : port.bits.flatMap((bit) => pins[bit] ?? []);
+  if (list === undefined || list.length === 0) return '—';
   if (list.length === 1) return list[0] ?? '—';
   return `${list[0]}…${list[list.length - 1]}`;
 }

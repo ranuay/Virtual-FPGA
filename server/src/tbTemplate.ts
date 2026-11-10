@@ -22,10 +22,10 @@
  * chosen to be the electrically "off" value for that signal, so an
  * unconnected output reads as blank rather than undefined (Appendix B).
  */
-
 import { LEGACY_RESET_PORT, type BoardIo } from './engines/boardPorts.js';
 import { stateLength, stimLength } from './engines/boardShape.js';
-import { connectPorts, type ConnectPort, type PinMap } from './engines/ioPins.js';
+import { connectPorts, portWires, type ConnectPort, type PinMap, type PortWire } from './engines/ioPins.js';
+
 import {
   clockHalfPeriod,
   decoderProcess,
@@ -56,13 +56,24 @@ export interface TiedInput {
 function buildPortMap(connected: readonly ConnectPort[], linked: ReadonlySet<string>, tied: readonly TiedInput[]): string {
   // The legacy rst is wired whether or not the board has a button for it (§ 7.2).
   const legacy: Array<[string, string]> = linked.has(LEGACY_RESET_PORT) ? [[LEGACY_RESET_PORT, RESET_SIGNAL]] : [];
-  const assocs = connected
-    .map(({ key, binding }): [string, string] => [key, vhdlActual(binding)])
+  const assocs = portWires(connected)
+    .flatMap(wireAssocs)
     .concat(legacy)
     .concat(tied.map(({ name, value }) => [name, value] as [string, string]))
     .map(([formal, actual]) => `${formal} => ${actual}`);
   if (assocs.length === 0) return '';
   return `\n    port map (\n      ${assocs.join(',\n      ')}\n    )`;
+}
+
+/**
+ * One wire's associations: `key => key_sig` for a board port, or — for a word pin, the
+ * display's segments — one per bit, `key(0) => ca_sig, …`. VHDL rejects an expression as
+ * the actual of an `out` port, so the word cannot be `key => dp_sig & seg_sig(6) & …`;
+ * naming the bits is legal in both directions and needs no signal of its own.
+ */
+function wireAssocs({ key, bits }: PortWire): Array<[string, string]> {
+  if (bits.length === 1) return [[key, vhdlActual(bits[0])]];
+  return bits.map((bit, index): [string, string] => [`${key}(${index})`, vhdlActual(bit)]);
 }
 
 export interface TestbenchOptions {

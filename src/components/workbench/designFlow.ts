@@ -69,6 +69,8 @@ export interface FlowWirePort {
   readonly constraint?: string;
   /** The board port the student pinned it to, which I/O Planning has not written yet. */
   readonly pin?: string;
+  /** When the pin covers a word (the display's segments): the board ports its bits are, least significant first. */
+  readonly bits?: readonly string[];
   /** The board ports this port may be pinned to (§ 7.6's direction and width rules). */
   readonly choices?: readonly string[];
 }

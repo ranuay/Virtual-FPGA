@@ -86,6 +86,14 @@ export function unmetPrerequisites(state: FlowState, step: FlowStep): readonly F
 }
 
 /**
+ * The prerequisite of `step` that failed, if any (PRD.md § 7.5, "Run (apa pun)"): the
+ * answer to such a click is that step's reason, not a dialog offering to run it again.
+ */
+export function failedPrerequisite(state: FlowState, step: FlowStep): FlowStep | undefined {
+  return PREREQUISITES[step].find((needed) => state.statuses[needed] === 'failed');
+}
+
+/**
  * What a request to run `step` means (PRD.md § 7.5). A step whose prerequisite is
  * missing either offers to run what is missing (`implement`, `bitstream` — the
  * dialogs of § 7.5), or is refused outright (`program`: its action is disabled

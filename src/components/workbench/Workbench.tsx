@@ -56,7 +56,7 @@ import { CodeEditor } from './CodeEditor';
 import { EmptyProject } from './EmptyProject';
 import { SimulationCard, type SimStatus } from './SimulationCard';
 import { DesignFlowPanel } from './DesignFlowPanel';
-import type { FlowStep, FlowWire } from './designFlow';
+import { unmetPrerequisites, type FlowStep, type FlowWire } from './designFlow';
 import { ConsoleOutput, type ConsoleLine, type ConsoleLink } from './ConsoleOutput';
 import { appendCapped } from './consoleLines';
 import { UPLOAD_ACCEPT, folderAfterRename, folderForUpload, topAfterDelete } from './fileKinds';
@@ -1595,20 +1595,24 @@ export function Workbench() {
     else runFile(topFileId);
   };
 
+  /** A step that starts the run has to clear the console the way Start does, or its log adds to the old one. */
+  const clearConsole = (): void => {
+    quietEnd.current = false;
+    stopWhenReady.current = false;
+    setLogLines([]);
+    stopElapsedTimer();
+    setElapsedSeconds(0);
+    blankBoard();
+  };
+
   /**
    * A design-flow step (PRD.md § 7.5). The sources travel with it so Synthesis sees what is
-   * open; Program Device starts the run itself, so the console is cleared here the way
-   * Start clears it — a flow step that runs nothing leaves the previous log alone.
+   * open. A step that starts the run itself — Program Device, or any step whose prerequisites
+   * are missing, because the backend then runs Synthesis … Program Device in a chain — clears
+   * the console here the way Start does; a step that runs nothing leaves the previous log alone.
    */
   const handleFlowStep = (step: FlowStep) => {
-    if (step === 'program') {
-      quietEnd.current = false;
-      stopWhenReady.current = false;
-      setLogLines([]);
-      stopElapsedTimer();
-      setElapsedSeconds(0);
-      blankBoard();
-    }
+    if (step === 'program' || unmetPrerequisites(flow, step).length > 0) clearConsole();
     const topName = files.find((f) => f.id === topFileId)?.name;
     getClient().flowRun(step, files, topName, topUnit, activeBoard.ports);
   };

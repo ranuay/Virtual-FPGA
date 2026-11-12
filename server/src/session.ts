@@ -28,6 +28,7 @@ import {
   begin,
   canProgram,
   fail,
+  failedPrerequisite,
   FLOW_STEPS,
   flowWire,
   initialFlow,
@@ -386,6 +387,17 @@ export class Session {
     if (sources !== undefined) this.noteSources(sources);
     const wanted = step as FlowStep;
     const request = requestStep(this.flow, wanted);
+    // § 7.5, "Run (apa pun)" with a prerequisite `failed`: the reason is that step's, and
+    // offering to run the missing steps again would only fail on the same cause. A step that
+    // is merely missing is not here — it is offered, and runs once it is done.
+    const failed = failedPrerequisite(this.flow, wanted);
+    // § 7.5, "Run (apa pun)": a prerequisite that failed is named, so the student is sent back
+    // to it instead of watching the same failure once more.
+    if (failed !== undefined) {
+      this.send({ verb: 'LOG', text: `Cannot run ${wanted}: ${failed} failed. Fix ${failed} and run it again.` });
+      this.sendFlow();
+      return;
+    }
     if (request.kind === 'refuse') {
       this.send({ verb: 'LOG', text: `Cannot run ${wanted}: ${request.missing.join(', ') || 'it is already running'}.` });
       this.sendFlow();

@@ -112,6 +112,19 @@ describe('the design flow in a session', () => {
     });
   });
 
+  test('after a step failed, the next one refuses and names it (§ 7.5)', async () => {
+    const { engine } = preparingEngine();
+    await withFlow(engine, async (session, frames) => {
+      // No design yet, so Synthesis fails; the steps after it report that reason rather
+      // than starting a chain that would fail the same way.
+      await session.handleFlowRun('synthesis');
+      assert.equal(statusOf(frames, 'synthesis'), 'failed');
+      await session.handleFlowRun('implement');
+      assert.match(logged(frames), /Cannot run implement: synthesis failed\./);
+      assert.equal(statusOf(frames, 'implement'), 'not_run', 'the refusal runs nothing');
+    });
+  });
+
   test('I/O Planning constrains the ports the board has, and Bitstream then passes its DRC', async () => {
     const { engine } = preparingEngine();
     await withFlow(engine, async (session, frames) => {

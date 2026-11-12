@@ -79,21 +79,23 @@ begin
 
   -- A multiplexed display, decoded into stable digits (docs/board_io_v2_spec.md § 7.4):
   -- each digit keeps the segments it showed while enabled, for DISPLAY_PERSIST.
-  mux_capture : process (seg_sig, dp_sig, an_sig)
-    variable was_on : std_logic_vector(3 downto 0) := (others => '0');
+  mux_capture : process
+    variable fired : boolean := false;
   begin
-    for d in 0 to 3 loop
-      if an_sig(d) = AN_ON then
-        digit_word(d) <= dp_sig & seg_sig;
-        digit_last(d) <= now;
-        digit_seen(d) <= '1';
-        was_on(d) := '1';
-      elsif was_on(d) = '1' then
-        -- Switched off: the hold of DISPLAY_PERSIST starts now.
-        digit_last(d) <= now;
-        was_on(d) := '0';
-      end if;
-    end loop;
+    if fired then
+      fired := false;
+      for d in 0 to 3 loop
+        if an_sig(d) = AN_ON then
+          digit_word(d) <= dp_sig & seg_sig;
+          digit_last(d) <= now;
+          digit_seen(d) <= '1';
+        end if;
+      end loop;
+    else
+      fired := true;
+      wait for 0 ns;
+    end if;
+    wait on seg_sig, dp_sig, an_sig;
   end process;
 
   -- Free-running clock, only instantiated when the entity actually
@@ -188,6 +190,9 @@ begin
     variable last_seq : integer := -1;
     variable now_bits : string(1 to 48);
     variable word : std_logic_vector(7 downto 0);
+    variable held : digit_words_t := (others => (others => SEG_OFF));
+    variable seen : std_logic_vector(3 downto 0) := (others => '0');
+    variable lit_at : digit_times_t := (others => 0 ns);
   begin
     loop
       -- A plain time-based wait, not clock edges (§ 5.8) — this process
@@ -243,14 +248,13 @@ begin
 
       -- STATE's own wire format (§ 6.4): LEDR then HEX0..HEX5, 52 bits,
       -- then the last applied input seq — the Node side's acknowledgement.
+      held := digit_word;
+      seen := digit_seen;
+      lit_at := digit_last;
       now_bits(1 to 16) := slv2str(ledr_sig);
       for d in 0 to 3 loop
-        if an_sig(d) = AN_ON then
-          word := dp_sig & seg_sig;
-        elsif an_sig(d) /= not AN_ON then
-          word := (others => 'X');
-        elsif digit_seen(d) = '1' and now - digit_last(d) <= DISPLAY_PERSIST then
-          word := digit_word(d);
+        if seen(d) = '1' and now - lit_at(d) <= DISPLAY_PERSIST then
+          word := held(d);
         else
           word := (others => SEG_OFF);
         end if;

@@ -2,11 +2,39 @@
 
 # ACSL Virtual FPGA Lab
 
-**Project Type:** Web-based FPGA Lab Simulator dengan Vivado-style Design Flow dan Virtual Nexys A7 **Project Status:** Initial Development **Version:** 1.1.0 **Reference Project:** [HDLBoard](https://github.com/rlangoy/HDLBoard) (kandidat fondasi, lihat 2.2) **Documentation Reference:** [fpga.acsl.my.id](http://fpga.acsl.my.id) **Target Hardware:** Digilent Nexys A7 **Primary Language:** VHDL, Verilog **Simulation Engines:** GHDL, Icarus Verilog
+**Project Type:** Web-based FPGA Lab Simulator dengan Vivado-style Design Flow dan Virtual Nexys A7 **Project Status:** Initial Development **Version:** 1.2.0 **Reference Project:** [HDLBoard](https://github.com/rlangoy/HDLBoard) (kandidat fondasi, lihat 2.2) **Documentation Reference:** [fpga.acsl.my.id](http://fpga.acsl.my.id) **Target Hardware:** Digilent Nexys A7 (A7-50T/A7-100T, sesuai lab) **Primary Language:** VHDL **Simulation Engines:** GHDL
+
+> **Ruang lingkup yang dikunci (v1.2.0).** Laboratorium ACSL menulis seluruh modul
+> praktikum dalam **VHDL**, dan satu-satunya board yang dipakai adalah **Nexys A7**.
+> Karena itu v1 hanya menjamin dua hal itu: bahasa VHDL sebagai bahasa yang diuji dan
+> didukung penuh, dan board Nexys A7 sebagai satu-satunya board yang wajib akurat.
+> Dukungan board lain yang sudah ada di aplikasi (`default`, Basys 3, DE10-Lite, DE1-SoC)
+> tetap berjalan sebagai warisan fork dan tidak boleh merusak Nexys A7, tetapi **tidak
+> menjadi target pengembangan, tidak diuji untuk praktikum, dan tidak perlu ditambah**.
+> Verilog/Icarus juga dipertahankan dengan alasan yang sama — bukan target bab manapun.
+> Setiap permintaan perubahan yang menyentuh board lain atau menambah dukungan Verilog
+> harus dikembalikan ke keputusan ini lebih dulu. Tabel di § 3.1 dan § 4 memakai aturan
+> ini; bagian lain PRD yang masih menyebut board/Verilog secara umum dibaca sebagai
+> "hanya berlaku sejauh tidak bertentangan dengan pembatasan ini".
 
 ---
 
 # 0. Changelog
+
+## v1.2.0
+
+Perubahan utama dari v1.1.0:
+
+1. **Ruang lingkup dikunci: VHDL + Nexys A7 saja.** Bahasa target dan board target
+   dinyatakan satu kali di header dan di § 1.4a; board lain yang sudah ada tetap jalan
+   tapi keluar dari roadmap, Verilog/Icarus tetap tersedia tapi bukan target.
+2. **Bab 3 dan Bab 4 diaudit ulang terhadap keputusan itu** (§ 3.1 catatan baru, § 3.0
+   Bahasa). Verilog dihapus dari daftar bukti yang wajib; contoh VHDL yang wajib ada
+   disebut eksplisit.
+3. **Phase 1 dan Phase 2 dipertajam** ke GHDL dan Nexys A7 (§ 18), dengan daftar
+   komponen board yang harus hidup sebelum board dianggap selesai.
+
+---
 
 ## v1.1.0
 
@@ -45,7 +73,7 @@ Platform ini tidak bertujuan menjadi simulator elektronik universal atau penggan
 ## 1.2 Main Objectives
 
 1. Menyediakan virtual FPGA yang merepresentasikan Nexys A7.
-2. Menjalankan source code VHDL dan Verilog menggunakan simulator sesungguhnya.
+2. Menjalankan source code **VHDL** menggunakan simulator sesungguhnya (GHDL). Verilog tersedia tetapi di luar target (§ 1.5).
 3. Mendukung source code dari modul praktikum ACSL tanpa perubahan yang tidak diperlukan.
 4. Menyediakan **Vivado-style Design Flow** agar praktikan memahami urutan kerja pada board asli.
 5. Menyediakan komponen input dan output virtual.
@@ -81,8 +109,39 @@ Dugaan awal pemetaan kurikulum (wajib dikonfirmasi terhadap modul resmi):
 - Bab 1 sampai 3 dominan memakai Behavioral Simulation.
 - Bab 4 sampai 7 memakai Board Flow, dengan Behavioral Simulation tetap tersedia untuk debug.
 
----
 
+## 1.5 Ruang Lingkup Terkunci: VHDL dan Nexys A7
+
+Bagian ini adalah keputusan proyek, bukan saran. Semua bab lain dibaca di bawah aturan ini.
+
+**Yang wajib benar dan diuji:**
+
+1. **VHDL** sebagai bahasa praktikum, dijalankan dengan GHDL (`--std=08`, `-fsynopsys`).
+   Semua contoh, test, dan penerimaan fitur ditulis dalam VHDL.
+2. **Nexys A7** sebagai satu-satunya board. Board profile `nexys-a7`
+   (`src/boards/builtinBoards.json`) adalah satu-satunya yang wajib akurat terhadap master
+   XDC dan board reference manual.
+3. Komponen Nexys A7 yang dipakai praktikum: 16 switch, 16 LED, 5 push button +
+   `CPU_RESETN` (active-low), 8-digit seven segment multiplexed (segment dan digit enable
+   active-low, ada decimal point), clock 100 MHz (`CLK100MHZ`), dan `CLOCK_500Hz` sebagai
+   kemudahan simulator (bukan pin board).
+
+**Yang dipertahankan tetapi bukan target:**
+
+1. Board lain (`default`, Basys 3, DE10-Lite, DE1-SoC) tetap ada karena fork. Board itu
+   **tidak boleh rusak**, tetapi juga **tidak ditambah, tidak diuji untuk praktikum, dan
+   tidak memblokir rilis**. Perbaikan yang hanya untuk board lain ditolak kecuali
+   perbaikannya juga mengenai jalur bersama.
+2. **Verilog/Icarus** tetap berjalan. Tidak ada fitur baru yang hanya untuk Verilog; bug
+   Verilog diperbaiki bila memperbaiki perilaku bersama, tidak bila membutuhkan
+   pekerjaan khusus Icarus.
+3. Fitur upstream yang tidak dipakai kurikulum ACSL (misalnya board editor bebas, contoh
+   non-Nexys) dibiarkan apa adanya tanpa investasi.
+
+**Akibat pada ticket dan review:** ticket yang menyentuh board lain atau menambah
+dukungan Verilog harus menyebut § 1.5 dan alasannya; tanpa itu, review menolaknya.
+
+---
 # 2. Project Foundation
 
 ## 2.1 Upstream Repository (Kandidat)
@@ -146,6 +205,20 @@ HDLBoard menggunakan GPL-2.0.
 
 Fitur dikembangkan berdasarkan kebutuhan modul praktikum ACSL.
 
+## 3.0 Bahasa dan Board (dibaca sebelum tabel di § 3.1)
+
+Seluruh modul praktikum ACSL ditulis dalam **VHDL** dan dijalankan di **Nexys A7**
+(§ 1.5). Konsekuensinya untuk bab ini:
+
+- Setiap contoh, soal, dan test penerimaan ditulis dalam VHDL. Verilog tidak wajib ada,
+  dan tidak ada bab yang penerimaannya bergantung pada Icarus.
+- Setiap contoh memakai nama pin Nexys A7 apa adanya (`CLK100MHZ`, `SW`, `LED`,
+  `BTNC`…`BTND`, `CPU_RESETN`, `CA`…`CG`, `DP`, `AN`) — contoh untuk board lain tidak
+  dipakai sebagai acuan materi.
+- `CLOCK_500Hz` adalah kemudahan simulator, bukan pin board; contoh yang memakainya harus
+  mengatakannya, karena file yang sama di Vivado tidak akan mensintesis clock itu.
+
+
 ## 3.1 Curriculum Mapping
 
 
@@ -162,6 +235,10 @@ Fitur dikembangkan berdasarkan kebutuhan modul praktikum ACSL.
 
 
 Catatan: daftar tersebut merupakan pemetaan awal berdasarkan modul yang telah dibahas. Agent wajib memeriksa kembali seluruh materi resmi dan contoh source code sebelum menetapkan implementasi final.
+
+Daftar di atas adalah urutan materi, bukan janji jenis board: kelima mode "Board Flow"
+memakai board yang sama, Nexys A7 (§ 1.5). Verilog/Icarus tidak menjadi syarat penerimaan
+bab manapun.
 
 ## 3.2 Bab 1: Basic VHDL
 

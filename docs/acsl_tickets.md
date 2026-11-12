@@ -4,6 +4,11 @@ The work left between here and a lab the ACSL course can use. `PRD.md` is the
 specification; this file is only the order, so two agents (or two Mondays) never
 edit the same file at once.
 
+**Scope is locked (PRD § 1.5): VHDL and Nexys A7 only.** No ticket below adds
+another board or new Verilog-only support; existing boards and Icarus keep
+working and are not allowed to break, but they are not targets. A ticket that
+needs either must say why against § 1.5 before it starts.
+
 ## How a ticket runs
 
 ```

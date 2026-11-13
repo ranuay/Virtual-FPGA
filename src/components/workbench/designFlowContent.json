@@ -1,0 +1,37 @@
+{
+  "synthesis": {
+    "vivado": "Vivado reads the HDL, checks its syntax and builds a netlist: gates and flip-flops, without any placement yet.",
+    "why": "A netlist is what every later step works on. A syntax error stops here, with a message naming the file and line.",
+    "here": "Real: the backend analyses and elaborates with GHDL or Icarus Verilog, the same commands a RUN uses. No simulation starts."
+  },
+  "ioPlanning": {
+    "vivado": "With the synthesized design open you assign each top-level port to a package pin, and the tool writes those assignments to the XDC constraints file.",
+    "why": "The board only drives the pins you named. A port left unassigned has no wire, and a wrong pin lights the wrong LED.",
+    "here": "Real: the ports come from the elaborate, and each one is bound to the board port whose name it matches. The board profile has no package pin numbers, so the binding — not an invented pin location — is the constraint."
+  },
+  "implement": {
+    "vivado": "Place and route: the netlist's cells are placed on the die and wired together, then timing is checked.",
+    "why": "A netlist alone cannot run on the chip; placement decides where each gate physically sits.",
+    "here": "Educational simulation: nothing is placed, and the log says so. Only the flow order and the explanation are shown."
+  },
+  "bitstream": {
+    "vivado": "The placed design is turned into the bitstream, the file the FPGA loads to become your circuit.",
+    "why": "The chip has no CPU and no program: the bitstream is the configuration that wires it up.",
+    "here": "Educational simulation: no bitstream file is produced. What is real is the design rule check — a top-level port without a pin fails this step."
+  },
+  "hardware": {
+    "vivado": "The Hardware Manager opens, asking how to reach the board: a cable, or a local or remote server.",
+    "why": "Vivado programs through JTAG, which needs a target before anything can be sent to it.",
+    "here": "UI only: the virtual Nexys A7 is always present, so this step just says the manager is open."
+  },
+  "connect": {
+    "vivado": "Open Target, then Auto Connect: Vivado scans the JTAG chain and lists the devices it finds.",
+    "why": "Programming needs a device that answered; the chain scan is what finds it.",
+    "here": "The virtual board answers, and the board stage becomes connected."
+  },
+  "program": {
+    "vivado": "The bitstream is written to the FPGA and the design starts running on the real chip.",
+    "why": "Up to here nothing has touched the hardware.",
+    "here": "Real in effect: the simulation starts and the board pane shows the design's outputs through the pins I/O Planning assigned. The board stage becomes programmed; changing the source afterwards leaves it running a stale bitstream, which the panel says."
+  }
+}

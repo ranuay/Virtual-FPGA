@@ -22,9 +22,10 @@
  * chosen to be the electrically "off" value for that signal, so an
  * unconnected output reads as blank rather than undefined (Appendix B).
  */
-
-import { boardBindings, declaresPort, LEGACY_RESET_PORT, type BoardIo } from './engines/boardPorts.js';
+import { LEGACY_RESET_PORT, type BoardIo } from './engines/boardPorts.js';
 import { stateLength, stimLength } from './engines/boardShape.js';
+import { connectPorts, portWires, type ConnectPort, type PinMap, type PortWire } from './engines/ioPins.js';
+
 import {
   clockHalfPeriod,
   decoderProcess,
@@ -47,21 +48,32 @@ export interface TiedInput {
 }
 
 /**
- * `port =>` associations for whichever board ports the entity declares, then the tied
- * inputs. The formal is the board name in lower case (`key_n => key_sig`): VHDL ignores
- * case, so this connects whatever spelling the entity used.
+ * `port =>` associations for whichever board ports the entity is wired to, then the tied
+ * inputs. The formal is the design port's name lower case (`key_n => key_sig`): VHDL
+ * ignores case, so this connects whatever spelling the entity used — and after a pin, the
+ * port it names is the one the student chose (§ 7.6), not the one its name matched.
  */
-function buildPortMap(ports: ReadonlySet<string>, board: BoardIo, tied: readonly TiedInput[]): string {
-  const known: Array<[string, string]> = [
-    ...boardBindings(board).map((b): [string, string] => [b.key, vhdlActual(b)]),
-    [LEGACY_RESET_PORT, RESET_SIGNAL],
-  ];
-  const assocs = known
-    .filter(([formal]) => ports.has(formal))
-    .map(([formal, actual]) => `${formal} => ${actual}`)
-    .concat(tied.map(({ name, value }) => `${name} => ${value}`));
+function buildPortMap(connected: readonly ConnectPort[], linked: ReadonlySet<string>, tied: readonly TiedInput[]): string {
+  // The legacy rst is wired whether or not the board has a button for it (§ 7.2).
+  const legacy: Array<[string, string]> = linked.has(LEGACY_RESET_PORT) ? [[LEGACY_RESET_PORT, RESET_SIGNAL]] : [];
+  const assocs = portWires(connected)
+    .flatMap(wireAssocs)
+    .concat(legacy)
+    .concat(tied.map(({ name, value }) => [name, value] as [string, string]))
+    .map(([formal, actual]) => `${formal} => ${actual}`);
   if (assocs.length === 0) return '';
   return `\n    port map (\n      ${assocs.join(',\n      ')}\n    )`;
+}
+
+/**
+ * One wire's associations: `key => key_sig` for a board port, or — for a word pin, the
+ * display's segments — one per bit, `key(0) => ca_sig, …`. VHDL rejects an expression as
+ * the actual of an `out` port, so the word cannot be `key => dp_sig & seg_sig(6) & …`;
+ * naming the bits is legal in both directions and needs no signal of its own.
+ */
+function wireAssocs({ key, bits }: PortWire): Array<[string, string]> {
+  if (bits.length === 1) return [[key, vhdlActual(bits[0])]];
+  return bits.map((bit, index): [string, string] => [`${key}(${index})`, vhdlActual(bit)]);
 }
 
 export interface TestbenchOptions {
@@ -86,6 +98,11 @@ export interface TestbenchOptions {
    * default, and then the port map is exactly what it was without them.
    */
   tiedInputs?: readonly TiedInput[];
+  /**
+   * The pins I/O Planning assigned, `design port (lower case) -> board port (lower case)`
+   * (PRD.md § 7.6). Omitted, every port is wired by name exactly as before.
+   */
+  pins?: PinMap;
 }
 
 /**
@@ -99,9 +116,12 @@ export function generateTestbench(
   board: BoardIo,
   options: TestbenchOptions = {},
 ): string {
-  const portMap = buildPortMap(ports, board, options.tiedInputs ?? []);
+  // The wires, after any pin (§ 7.6): a pinned port connects to the board port the
+  // student chose, and the one its name matched is left for the port that took it.
+  const connected = connectPorts([...ports].map((name) => ({ name })), board, options.pins ?? new Map()).connected;
+  const portMap = buildPortMap(connected, ports, options.tiedInputs ?? []);
   const rstDrive = legacyResetDrive(ports, board);
-  const hasBoardClock = declaresPort(ports, board.clock.port);
+  const hasBoardClock = connected.some(({ binding }) => binding.role === 'clock');
   const halfPeriod = clockHalfPeriod(board);
   const stim = stimLength(board);
   const state = stateLength(board);

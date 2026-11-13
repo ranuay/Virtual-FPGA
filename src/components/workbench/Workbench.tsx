@@ -55,6 +55,8 @@ import { PanelToggleIcon } from './icons';
 import { CodeEditor } from './CodeEditor';
 import { EmptyProject } from './EmptyProject';
 import { SimulationCard, type SimStatus } from './SimulationCard';
+import { DesignFlowPanel } from './DesignFlowPanel';
+import { unmetPrerequisites, type FlowStep, type FlowWire } from './designFlow';
 import { ConsoleOutput, type ConsoleLine, type ConsoleLink } from './ConsoleOutput';
 import { appendCapped } from './consoleLines';
 import { UPLOAD_ACCEPT, folderAfterRename, folderForUpload, topAfterDelete } from './fileKinds';
@@ -403,6 +405,11 @@ export function Workbench() {
   const [logLines, setLogLines] = useState<ConsoleLine[]>([]);
   const logSeq = useRef(0);
 
+  // The design flow (PRD.md § 7): the backend owns the sequence, this is its last FLOW frame.
+  const [flow, setFlow] = useState<FlowWire | null>(null);
+  // A step is running: every flow button is locked until its FLOW frame says otherwise (§ 7.8).
+  const flowBusy = flow?.steps.some((entry) => entry.status === 'running') ?? false;
+
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const elapsedTimer = useRef<number | null>(null);
 
@@ -590,7 +597,10 @@ export function Workbench() {
           stopElapsedTimer();
           setStatus('stopped');
           blankBoard();
+          // A new connection is a new session: its flow starts over (the backend sends one on HELLO).
+          setFlow(null);
         },
+        onFlow: setFlow,
         onOldBackend: () => appendLog(BOARD_TEXT.oldBackend, 'error'),
         wave: waveHandlers,
       });
@@ -1585,6 +1595,33 @@ export function Workbench() {
     else runFile(topFileId);
   };
 
+  /** A step that starts the run has to clear the console the way Start does, or its log adds to the old one. */
+  const clearConsole = (): void => {
+    quietEnd.current = false;
+    stopWhenReady.current = false;
+    setLogLines([]);
+    stopElapsedTimer();
+    setElapsedSeconds(0);
+    blankBoard();
+  };
+
+  /**
+   * A design-flow step (PRD.md § 7.5). The sources travel with it so Synthesis sees what is
+   * open. A step that starts the run itself — Program Device, or any step whose prerequisites
+   * are missing, because the backend then runs Synthesis … Program Device in a chain — clears
+   * the console here the way Start does; a step that runs nothing leaves the previous log alone.
+   */
+  const handleFlowStep = (step: FlowStep) => {
+    if (step === 'program' || unmetPrerequisites(flow, step).length > 0) clearConsole();
+    const topName = files.find((f) => f.id === topFileId)?.name;
+    getClient().flowRun(step, files, topName, topUnit, activeBoard.ports);
+  };
+
+  /** I/O Planning's pin for one design port (§ 7.6); the backend answers with a `FLOW` frame. */
+  const handleFlowPin = (port: string, boardPort: string | undefined) => {
+    getClient().flowPin(port, boardPort);
+  };
+
   /** Play in a pane header: exactly that pane's unit (§ 4.10). */
   const handleRunPane = (pane: PaneRole, target: PaneTarget) => {
     if (isSimulating) return;
@@ -2012,6 +2049,13 @@ export function Workbench() {
               topFile={topFileName}
               onStart={handleStart}
               onStop={handleStop}
+            />
+            <DesignFlowPanel
+              flow={flow}
+              pins={activeBoard.pins}
+              busy={flowBusy || isSimulating}
+              onRun={handleFlowStep}
+              onPin={handleFlowPin}
             />
             <FileExplorer
               rows={rows}

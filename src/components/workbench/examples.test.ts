@@ -153,6 +153,29 @@ describe('examples written for Basys 3, Nexys A7 and DE10-Lite', () => {
     }
   });
 
+  test('the Bab 5 cards carry the board files that replace them, in the board\'s own names', () => {
+    for (const id of ['basys3', 'nexys-a7']) {
+      const board = builtInBoard(id);
+      const key = id === 'basys3' ? 'btn' : 'BTN';
+      for (const [card, switched] of [['up_down_counter_7seg', key + 'C'], ['bcd_7seg', id === 'basys3' ? 'sw' : 'SW']] as const) {
+        for (const language of ['vhdl', 'verilog'] as const) {
+          const e = examplesFor(board).find((entry) => entry.key === card && entry.language === language);
+          expect(e, `${id}: ${card} ${language}`).toBeDefined();
+          const file = copyExample(e!, [], idSequence(), board).added[0];
+          expect(file.content, `${id}: ${card} ${language}`).toContain(switched);
+          // The built-in is written for the Default board: neither name may survive a board copy.
+          expect(file.content).not.toMatch(/\bKEY_N\b|\bHEX0_N\b/);
+        }
+      }
+    }
+  });
+
+  test('the Bab 5 cards are not offered to a board without display files of its own', () => {
+    const keys = examplesFor(builtInBoard('de10-lite')).map((e) => e.key);
+    expect(keys).not.toContain('up_down_counter_7seg');
+    expect(keys).not.toContain('bcd_7seg');
+  });
+
   test('the top level and the key examples use only the ports of the board', () => {
     const basys = builtInBoard('basys3');
     const top = copyExample(example('de1_soc_vhdl'), [], idSequence(), basys).added[0];

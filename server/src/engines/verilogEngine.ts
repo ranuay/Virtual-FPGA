@@ -28,7 +28,10 @@ import { boardTimingFor, TIMING_WITHOUT_CLOCK_50 } from './boardTiming.js';
 import { sameNameNotes, type SameNameDeclarations } from './sameNameNotes.js';
 import type { BoardIo } from './boardPorts.js';
 import { checkBoardPortShapes, shapeNotes, type DeclaredPort } from './boardShapeCheck.js';
-import type { PlannedWave, PrepareRequest, PrepareResult, RunPlan, SimEngine } from './types.js';
+import type { PinMap } from './ioPins.js';
+import type { DesignPort, PlannedWave, PrepareRequest, PrepareResult, RunPlan, SimEngine } from './types.js';
+/** `lower-case board name -> the spelling the design declared`, from `boardPortSpellings`. */
+type Spellings = ReadonlyMap<string, string>;
 
 /** Every platform paces through stdin: Verilog can block in `$fgets` on it, and there is no `mkfifo` on Windows. */
 const PACING: RunPlan['pacing'] = 'stdin';
@@ -46,6 +49,8 @@ interface Build {
   readonly notes: readonly string[];
   /** The port names the design is matched against and the wrapper connects by. */
   readonly board: BoardIo;
+  /** I/O Planning's pins (§ 7.6): which board port each design port drives. */
+  readonly pins?: PinMap;
 }
 
 type Checked =
@@ -117,8 +122,8 @@ const compileRequest = (build: Build, target: string, extras: Extras = {}): Comp
   extraRoots: extras.roots ?? [],
 });
 
-function batchPlan(build: Build, messages: readonly string[], wave: PlannedWave | undefined): RunPlan {
-  const plan: RunPlan = { mode: 'batch', dir: build.dir, runTarget: build.top, timing: TIMING_WITHOUT_CLOCK_50, pacing: PACING, messages };
+function batchPlan(build: Build, { messages, wave, ports }: { messages: readonly string[]; wave: PlannedWave | undefined; ports: readonly DesignPort[] }): RunPlan {
+  const plan: RunPlan = { mode: 'batch', dir: build.dir, runTarget: build.top, timing: TIMING_WITHOUT_CLOCK_50, pacing: PACING, messages, ports };
   return wave === undefined ? plan : { ...plan, wave };
 }
 
@@ -139,9 +144,17 @@ function planWave(files: readonly VhdlFileInput[]): Recording {
   return { wave: { format: 'vcd', ownFile: own.file }, helper: false, note: OWN_DUMP_NOTE };
 }
 
-function boardPlan(build: Build, ports: readonly Port[], messages: readonly string[]): RunPlan {
-  const timing = boardTimingFor(boardPortSpellings(ports, build.board).has(build.board.clock.port.toLowerCase()));
-  return { mode: 'board', dir: build.dir, runTarget: SIMULATION_FILE_NAME, timing, pacing: PACING, messages };
+function boardPlan(build: Build, { ports, spellings, messages }: { ports: readonly Port[]; spellings: Spellings; messages: readonly string[] }): RunPlan {
+  const timing = boardTimingFor(spellings.has(build.board.clock.port.toLowerCase()));
+  return { mode: 'board', dir: build.dir, runTarget: SIMULATION_FILE_NAME, timing, pacing: PACING, messages, ports: designPorts(ports) };
+}
+/** Icarus's directions as the flow spells them (PRD.md § 7.2 step 2). */
+function designPorts(ports: readonly Port[]): DesignPort[] {
+  return ports.map((port) => ({
+    name: port.name,
+    direction: port.direction === 'input' ? 'in' : port.direction === 'output' ? 'out' : 'inout',
+    width: port.width,
+  }));
 }
 
 /**
@@ -155,7 +168,7 @@ async function prepareBatch(build: Build, ports: readonly Port[], recording: Rec
   // A top with ports of its own but none of the board's is told why it is not a board design.
   const hint = ports.length > 0 ? [standaloneHint(build.top, build.board)] : [];
   const note = recording?.note === undefined ? [] : [recording.note];
-  return { ok: true, plan: batchPlan(build, [...build.notes, ...hint, ...compiled.messages, ...note], recording?.wave) };
+  return { ok: true, plan: batchPlan(build, { messages: [...build.notes, ...hint, ...compiled.messages, ...note], wave: recording?.wave, ports: designPorts(ports) }) };
 }
 
 /** Writes the helper module when the recording needs it, and names it for the compile. */
@@ -178,9 +191,10 @@ function declaredPort({ name, direction, width }: Port): DeclaredPort {
 async function prepareBoard(build: Build, ports: readonly Port[]): Promise<PrepareResult> {
   // A board port of another width is said plainly; Icarus connects the low bits and runs it.
   const widthNotes = shapeNotes(checkBoardPortShapes(ports.map(declaredPort), build.board, 'verilog'));
-  writeFileSync(join(build.dir, TESTBENCH_FILE_NAME), buildBoardTestbench(build.top, boardPortSpellings(ports, build.board), build.board));
+  const spellings = boardPortSpellings(ports, build.board, build.pins);
+  writeFileSync(join(build.dir, TESTBENCH_FILE_NAME), buildBoardTestbench(build.top, spellings, build.board));
   const compiled = await compileVerilog(build.tools, compileRequest(build, TESTBENCH_MODULE_NAME, { files: [TESTBENCH_FILE_NAME] }));
-  if (compiled.ok) return { ok: true, plan: boardPlan(build, ports, [...build.notes, ...widthNotes, ...compiled.messages]) };
+  if (compiled.ok) return { ok: true, plan: boardPlan(build, { ports, spellings, messages: [...build.notes, ...widthNotes, ...compiled.messages] }) };
   const { stage, text } = compiled.failure;
   return stage === 'analyze' ? failure('internal', `Internal testbench build error:\n${text}`) : failure(stage, text);
 }
@@ -197,7 +211,7 @@ async function versionNotes(tools: ToolPaths, dir: string): Promise<string[]> {
   return notes;
 }
 
-async function prepare({ dir, files, topFile, runTarget, wave, board }: PrepareRequest): Promise<PrepareResult> {
+async function prepare({ dir, files, topFile, runTarget, wave, board, pins }: PrepareRequest): Promise<PrepareResult> {
   const checked = checkProject(files, topFile, runTarget);
   if (!checked.ok) return failure(checked.stage, checked.text);
   // Before any file is written or any compiler is spawned: Icarus 12 spins on a cycle.
@@ -209,10 +223,10 @@ async function prepare({ dir, files, topFile, runTarget, wave, board }: PrepareR
   const sameNamed = sameNamedElsewhere(files, checked);
   const sources = checked.sources.filter((name) => !sameNamed.otherFiles.includes(name));
   const notes = [...(await versionNotes(tools, dir)), ...sameNameNotes(sameNamed)];
-  const build: Build = { tools, dir, top: checked.top, sources, notes, board };
+  const build: Build = { tools, dir, top: checked.top, sources, notes, board, pins };
   const ports = await readTopPorts(tools, compileRequest(build, build.top));
   if (!ports.ok) return failure(ports.failure.stage, ports.failure.text);
-  if (isBoardDesign(ports.ports, board)) return prepareBoard(build, ports.ports);
+  if (isBoardDesign(ports.ports, board, pins)) return prepareBoard(build, ports.ports);
   return prepareBatch(build, ports.ports, wave === undefined ? undefined : planWave(compiledFiles(files, checked.sources, sources)));
 }
 

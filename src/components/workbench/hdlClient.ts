@@ -20,6 +20,7 @@ import { BOARD_VERB, encodeBoardFrame, encodeV1BoardFrame, fitsV1BoardFrame } fr
 import type { BoardPorts } from '../../boards/types';
 import { BOARD_TEXT } from './boardText';
 import type { TimedStim } from './bouncyButtons';
+import { parseFlow, type FlowStep, type FlowWire } from './designFlow';
 
 /** `<bits>`, or `<bits>/<holdNs>` for a step that holds a set time. */
 function stimStepText({ bits, holdNs }: TimedStim): string {
@@ -51,6 +52,8 @@ export interface HdlClientHandlers {
    * Called once per connection; no more BOARD frames are sent on it.
    */
   onOldBackend?(): void;
+  /** The design flow's whole state (PRD.md § 7.3); omitted, `FLOW` frames are ignored. */
+  onFlow?(flow: FlowWire): void;
   /** The waveform frames (docs/waveform_viewer_spec.md § 7.4); omitted, they are ignored. */
   wave?: WaveClientHandlers;
 }
@@ -207,6 +210,11 @@ export class HdlClient {
       case 'WAVE-NONE':
         this.handleWaveFrame(verb, inline);
         break;
+      case 'FLOW': {
+        const flow = parseFlow(body);
+        if (flow !== undefined) this.handlers.onFlow?.(flow);
+        break;
+      }
       case 'PONG':
         break;
       default:
@@ -337,6 +345,39 @@ export class HdlClient {
 
   stop(): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send('STOP');
+  }
+
+  /**
+   * `FLOW-RUN <step>`: one step of the design flow, answered with a `FLOW` frame
+   * (PRD.md § 7.5). The sources go with it — the same `RUN` body — so Synthesis
+   * elaborates what is open in the editor, not what a previous RUN uploaded.
+   */
+  flowRun(step: FlowStep, files: VhdlFile[], topFileName: string | undefined, runTarget: string | null, board: BoardPorts): void {
+    const ws = this.ensureSocket();
+    const body = filesForRun(files, topFileName)
+      .map((f) => `@@FILE ${f.name}@@\n${f.content}`)
+      .join('\n');
+    const head = `FLOW-RUN ${step}${topFileName ? ` ${topFileName}${runTarget ? ` @${runTarget}` : ''}` : ''}`;
+    const send = () => {
+      if (this.backendKnowsBoard) {
+        const boardFrame = this.boardFrameFor(board);
+        if (boardFrame !== undefined) ws.send(boardFrame);
+      }
+      ws.send(`${head}\n${body}`);
+    };
+    if (ws.readyState === WebSocket.OPEN) this.whenWelcomed(send);
+    else ws.addEventListener('open', () => this.whenWelcomed(send), { once: true });
+  }
+
+  /**
+   * `FLOW-PIN <port> [<board port>]`: I/O Planning's pin for one design port (§ 7.6),
+   * answered with a `FLOW` frame. No board port means "match by name again".
+   */
+  flowPin(port: string, boardPort: string | undefined): void {
+    const ws = this.ensureSocket();
+    const frame = boardPort === undefined ? `FLOW-PIN ${port}` : `FLOW-PIN ${port} ${boardPort}`;
+    if (ws.readyState === WebSocket.OPEN) this.whenWelcomed(() => ws.send(frame));
+    else ws.addEventListener('open', () => this.whenWelcomed(() => ws.send(frame)), { once: true });
   }
 
   close(): void {

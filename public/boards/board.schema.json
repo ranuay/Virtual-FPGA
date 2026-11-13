@@ -160,7 +160,12 @@
         "description": { "type": "string", "maxLength": 140, "description": "Shown beside the name in Settings › Board." },
         "ports": { "$ref": "#/$defs/ports" },
         "labels": { "$ref": "#/$defs/labels" },
-        "resources": { "type": "array", "items": { "$ref": "#/$defs/resource" }, "maxItems": 4, "description": "Links to the board's design resources, shown in Settings › Board." }
+        "resources": { "type": "array", "items": { "$ref": "#/$defs/resource" }, "maxItems": 4, "description": "Links to the board's design resources, shown in Settings › Board." },
+        "pins": {
+          "type": "object",
+          "description": "The package pin of each bit of a port, least significant first (PRD.md § 4.2). Shown in I/O Planning.",
+          "additionalProperties": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z]{1,2}[0-9]{1,2}$" } }
+        }
       },
       "additionalProperties": false
     },

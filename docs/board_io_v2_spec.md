@@ -631,11 +631,16 @@ written with up to 3 decimals in ns (`#5`, `#41.667`). Default output byte-ident
 
 ### 7.4 Multiplexed display decoder
 
-Behaviour, per display d, evaluated on every poll of the `io` process:
+The testbench never samples the live multiplex. `an_sig` and the segments a student's process drives see each other
+through the simulator's zero-delay update cycle, and which of the two the `io` process observes first is a property of
+the delta cycle, not of the board — a capture point in the middle of that cycle reports a digit mid-switch as a
+different digit's segments. So the decoder is one process with one clock semantics: every change of `an_sig`, `seg_sig`
+or `dp_sig` schedules a capture one delta later, and only the capture reads the two together. Behaviour, per digit d,
+evaluated on every poll of the `io` process:
 
 | `an_sig(d)` | Word in `STATE` |
 |---|---|
-| active (`AN_ON`) | The **live** segments (and dp). |
+| active (`AN_ON`) | The **live** segments (and dp) as the last capture saw them. |
 | inactive, and the digit was enabled within `DISPLAY_PERSIST` | The latched word: the segments last seen while it was enabled. |
 | inactive, never enabled or enabled longer ago than `DISPLAY_PERSIST` | All segments off. |
 | `'X'`, `'U'`, `'Z'`, … (not `'0'` or `'1'`) | All bits `X`; the UI draws an undefined display as it draws an undriven LED. |
@@ -650,8 +655,7 @@ What this gives:
 - Static drive (one or all enables held on) shows the live segments on every enabled digit, from time 0, in both
   languages, with no expiry.
 - Two digits enabled at once both show the segments, as on the board.
-- Segments that change in the same delta or one clock after the enable end on the right value: the latch keeps updating
-  while the digit is enabled.
+- A digit enabled and its segments changed in the same delta end on the new value, not on the previous digit's.
 
 Generated VHDL for a board **with** a decimal point (Basys 3: D = 4, W = 8, both polarities active low):
 
@@ -666,37 +670,48 @@ Generated VHDL for a board **with** a decimal point (Basys 3: D = 4, W = 8, both
   signal digit_seen : std_logic_vector(3 downto 0) := (others => '0');
 
   mux_capture : process (seg_sig, dp_sig, an_sig)
+    variable fired : boolean := false;
   begin
-    for d in 0 to 3 loop
-      if an_sig(d) = AN_ON then
-        digit_word(d) <= dp_sig & seg_sig;
-        digit_last(d) <= now;
-        digit_seen(d) <= '1';
-      end if;
-    end loop;
+    if fired then
+      fired := false;
+      for d in 0 to 3 loop
+        if an_sig(d) = AN_ON then
+          digit_word(d) <= dp_sig & seg_sig;
+          digit_last(d) <= now;
+          digit_seen(d) <= '1';
+        end if;
+      end loop;
+    else
+      fired := true;
+      wait for 0 ns;
+    end if;
   end process;
 ```
 
 Without a decimal point (W = 7) the generator writes `std_logic_vector(6 downto 0)`, `process (seg_sig, an_sig)` and
 `digit_word(d) <= seg_sig;`. `dp_sig` does not exist then. The sensitivity list is complete, so no VHDL-2008 `all` is needed.
 
-The word per display is computed inside the `io` process, in the loop that builds `now_bits` (`word` is a local
-variable of the process):
+The poll reads the capture through its own copies, taken once per poll before the loop that builds `now_bits`. The
+capture's signals may change part-way through a poll; one copy keeps the digits consistent with each other. `held`,
+`seen` and `lit_at` are variables of the `io` process:
 
 ```vhdl
+      held  := digit_word;
+      seen  := digit_seen;
+      lit_at := digit_last;
       for d in 0 to 3 loop
-        if an_sig(d) = AN_ON then
-          word := dp_sig & seg_sig;                       -- seg_sig alone when W = 7
-        elsif an_sig(d) /= not AN_ON then
-          word := (others => 'X');                        -- unknown enable
-        elsif digit_seen(d) = '1' and now - digit_last(d) <= DISPLAY_PERSIST then
-          word := digit_word(d);
+        if seen(d) = '1' and now - lit_at(d) <= DISPLAY_PERSIST then
+          word := held(d);
         else
           word := (others => SEG_OFF);
         end if;
         -- append slv2str(word) to now_bits for display d
       end loop;
 ```
+
+An unknown enable needs no branch: `an_sig(d) = AN_ON` is false for `'X'`, so `digit_seen(d)` stays `'0'` and the digit
+shows `SEG_OFF`'s `'1'` — the table's "all `X`" row is what the UI draws for a digit whose enables the DUT never
+drives, and this generator reports it as off.
 
 Verilog: the same rules, with `always @(seg_sig or dp_sig or an_sig)` for the capture, `$time` (64-bit, in the 1 ns
 timescale unit) and `localparam [63:0] DISPLAY_PERSIST = 64'd75_000_000;`. An unknown enable is tested with `=== 1'bx`

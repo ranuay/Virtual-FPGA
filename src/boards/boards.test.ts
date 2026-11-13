@@ -53,6 +53,17 @@ describe('board ports', () => {
   ])('heads the displays %j as %s', (displays, heading) => {
     expect(sevenSegmentHeading(displays)).toBe(heading);
   });
+
+  it('names the package pin of every port of the Nexys A7, one per bit', () => {
+    const nexys = builtInBoard('nexys-a7');
+    expect(Object.keys(nexys.pins).sort()).toEqual(['AN', 'BTNC', 'BTND', 'BTNL', 'BTNR', 'BTNU', 'CA', 'CB', 'CC', 'CD', 'CE', 'CF', 'CG', 'CLK100MHZ', 'CPU_RESETN', 'DP', 'LED', 'SW']);
+    expect(nexys.pins.SW).toHaveLength(16);
+    expect(nexys.pins.LED).toHaveLength(16);
+    expect(nexys.pins.AN).toHaveLength(8);
+    // The master XDC gives the two 1.8 V switch pins, so a wrong table is visible here.
+    expect(nexys.pins.SW?.slice(8, 10)).toEqual(['T8', 'U8']);
+    expect(nexys.pins.BTNC).toEqual(['N17']);
+  });
 });
 
 describe('the protocol-2 BOARD frame', () => {

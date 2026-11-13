@@ -65,6 +65,11 @@ describe('parseBoardFile, version 2', () => {
     ['a resource URL with a control character', resources(link('https://a.example/x\u0007')), 'must be an https:// address'],
     ['a resource URL of 513 characters', resources(link(`https://a.example/${'x'.repeat(513 - 18)}`)), 'resources[0].url is longer than 512 characters'],
     ['five resources', resources(...['a', 'b', 'c', 'd', 'e'].map((label) => link('https://a.example/', label))), 'resources must be an array of at most 4 links'],
+    ['a pin list of the wrong length', lab({}, { pins: { CLK: ['E3', 'E4'] } }), 'pins.CLK has 2 pins, and CLK has 1 bit'],
+    ['a pin for a port the board has no part for', lab({}, { pins: { BTNC: ['N17'] } }), 'pins.BTNC is not a port of this board'],
+    ['a pin name that is not one', lab({}, { pins: { CLK: ['not a pin'] } }), 'pins.CLK[0] "not a pin" is not a pin name like J15'],
+    ['one package pin on two ports', lab({ switches: { port: 'SW', count: 1 } }, { pins: { CLK: ['E3'], SW: ['E3'] } }), 'pins.SW[0] E3 is also CLK on this board'],
+    ['a pin list that is not a list', lab({}, { pins: { CLK: 'E3' } }), 'pins.CLK must be an array of pin names'],
   ])('skips a board with %s', (_case, board, expected) => {
     expect(warningFor(board)).toContain(expected);
   });
@@ -85,6 +90,22 @@ describe('parseBoardFile, version 2', () => {
 
   it('loads the Course board of docs/BOARDS.md', () => {
     expect(testBoard('course').ports.pushbuttons.group).toEqual({ kind: 'scalars', ports: ['BTN0', 'BTN1', 'BTN2'] });
+  });
+
+  it('reads the pins of each port, spelling a lower-case key as the board spells the port', () => {
+    const [board] = parseBoardFile(
+      JSON.stringify({
+        version: 2,
+        boards: [lab({ switches: { port: 'SW', count: 2 } }, { pins: { clk: ['E3'], SW: ['J15', 'L16'], KEY: ['N17', 'M18', 'P17', 'M17'] } })],
+      }),
+      USER,
+    ).boards;
+    expect(board.pins).toEqual({ CLK: ['E3'], SW: ['J15', 'L16'], KEY: ['N17', 'M18', 'P17', 'M17'] });
+  });
+
+  it('reads a board with no pins field as one that names none', () => {
+    const [board] = parseBoardFile(JSON.stringify({ version: 2, boards: [lab()] }), USER).boards;
+    expect(board.pins).toEqual({});
   });
 });
 

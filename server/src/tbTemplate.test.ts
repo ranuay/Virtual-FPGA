@@ -84,9 +84,21 @@ describe('generateTestbench on boards of other shapes (docs/board_io_v2_spec.md 
 
   test('decodes a multiplexed display without a decimal point in 7-bit words', () => {
     const text = generateTestbench('top', new Set(['seg', 'an']), MUX_NO_POINT_BOARD_IO);
-    assert.match(text, /mux_capture : process \(seg_sig, an_sig\)/);
+    // The capture reads every digit after the ones a change switches off settle (§ 7.4),
+    // which takes a second evaluation, not the implicit list `process (seg_sig, an_sig)`.
+    assert.match(text, /mux_capture : process\n/);
+    assert.match(text, /wait on seg_sig, an_sig;/);
     assert.match(text, /digit_word\(d\) <= seg_sig;/);
     assert.match(text, /now_bits\(9 \+ d \* 7 to 8 \+ \(d \+ 1\) \* 7\)/);
     assert.doesNotMatch(text, /dp_sig/);
+  });
+
+  // § 7.6: one 8-bit design port pinned to the display's segment word. VHDL rejects an
+  // expression as the actual of an `out` port, so the bits are named one by one.
+  test('wires a port pinned to the segment word one bit at a time', () => {
+    const text = generateTestbench('top', new Set(['seg8']), NEXYS_A7_BOARD_IO, { pins: new Map([['seg8', 'ca…dp']]) });
+    assert.match(text, /seg8\(0\) => seg_sig\(0\),\n\s+seg8\(1\) => seg_sig\(1\)/);
+    assert.match(text, /seg8\(7\) => dp_sig\n/);
+    assert.doesNotMatch(text, /seg8 => /);
   });
 });

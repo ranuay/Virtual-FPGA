@@ -77,6 +77,14 @@ export const GHDL_RUNTIME_BOUND = join([
   'ghdl:error: simulation failed',
 ]);
 
+/** GHDL 6.0.0, `ghdl -r --std=08` on a design indexing past its table: line 10 of `m.vhdl`. */
+export const GHDL6_RUNTIME_BOUND = join([
+  'ghdl:error: index (9) out of bounds (0 to 7) at m.vhdl:10',
+  'ghdl:error: simulation failed',
+]);
+/** GHDL 6.0.0, the same failure on a board design, which names no index or value. */
+export const GHDL6_BOUND_CHECK = join(['ghdl:error: bound check failure at Nexys_A7.vhdl:28']);
+
 // ------------------------------------------------------------------- A.4 wrapper
 
 /** GHDL 4.1.0, the generated `hdl_board_tb.vhdl` failing to fit the entity (A.4). */

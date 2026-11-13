@@ -11,6 +11,7 @@
  */
 
 import { isObject } from '../project/jsonValue';
+import { readPins } from './parsePins';
 import { checkBoard, fail, invalid, quoted, valid, type BoardIssue, type Checked } from './boardFileReader';
 import { labelProblem } from './boardNames';
 import { readPorts } from './parsePorts';
@@ -29,7 +30,7 @@ export const MAX_ID_LENGTH = 32;
 export const MAX_NAME_LENGTH = 40;
 export const MAX_DESCRIPTION_LENGTH = 140;
 const V1_BOARD_FIELDS: readonly string[] = ['id', 'name', 'description', 'ports', 'labels'];
-const V2_BOARD_FIELDS: readonly string[] = [...V1_BOARD_FIELDS, 'resources'];
+const V2_BOARD_FIELDS: readonly string[] = [...V1_BOARD_FIELDS, 'resources', 'pins'];
 
 /** Where a board file comes from: its name in warnings, and the origin of its boards. */
 export interface BoardFileSource {
@@ -115,12 +116,14 @@ function readBoard(entry: unknown, { version, origin }: BoardContext): BoardDefi
   const unknownKey = Object.keys(entry).find((key) => !fields.includes(key));
   if (unknownKey !== undefined) fail(`${quoted(unknownKey)} is not a board field (the fields are ${fields.join(', ')})`, unknownKey);
   const raw = version === 1 ? upgraded(entry) : entry;
+  const ports = readPorts(raw.ports);
   return {
     id: readId(raw.id),
     name: readName(raw.name),
     description: readDescription(raw.description),
-    ports: readPorts(raw.ports),
+    ports,
     labels: readLabels(raw.labels),
+    pins: readPins(raw.pins, ports),
     resources: readResources(raw.resources),
     origin,
   };

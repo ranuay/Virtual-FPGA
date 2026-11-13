@@ -82,6 +82,22 @@ const CATALOGUE: readonly ExampleEntry[] = [
     files: { vhdl: ['key_counter_7seg'], verilog: ['key_counter_7seg_v'] },
   },
   {
+    key: 'up_down_counter_7seg',
+    title: 'Up/Down Counter to 7-Segment',
+    description: 'Press KEY0 to count up and KEY1 to count down on the 7-segment display (0-9).',
+    usesHex: true,
+    role: 'design',
+    files: { vhdl: ['up_down_counter_7seg'], verilog: ['up_down_counter_7seg_v'] },
+  },
+  {
+    key: 'bcd_7seg',
+    title: 'BCD to 7-Segment Decoder',
+    description: 'The binary number on the switches (0-9) is shown as one digit; 10-15 show blank.',
+    usesHex: true,
+    role: 'design',
+    files: { vhdl: ['bcd_7seg'], verilog: ['bcd_7seg_v'] },
+  },
+  {
     key: 'key_uart_tx',
     title: 'Key to UART Tx',
     description: "Press KEY0 to send 'A' and KEY1 to send 'B' over RS-232 (8N1, 9600 baud). Tx is shown on LEDR0, Busy on LEDR1.",
@@ -161,10 +177,14 @@ const BOARD_DESCRIPTIONS: Readonly<Record<string, Readonly<Record<string, string
   basys3: {
     key_counter_7seg: 'Press btnC to count up on the 7-segment displays (00-99); btnU resets.',
     key_uart_tx: "Press btnC to send 'A' and btnU to send 'B' over RS-232 (8N1, 9600 baud). Tx is shown on led[0], Busy on led[1].",
+    up_down_counter_7seg: 'Press btnC to count up and btnU to count down on the 7-segment display (0-9).',
+    bcd_7seg: 'The binary number on sw3..sw0 (0-9) is shown as one digit; 10-15 show blank.',
   },
   'nexys-a7': {
     key_counter_7seg: 'Press BTNC to count up on the 7-segment displays (00-99); BTNU resets.',
     key_uart_tx: "Press BTNC to send 'A' and BTNU to send 'B' over RS-232 (8N1, 9600 baud). Tx is shown on LED[0], Busy on LED[1].",
+    up_down_counter_7seg: 'Press BTNC to count up and BTND to count down on the 7-segment display (0-9).',
+    bcd_7seg: 'The binary number on SW3..SW0 (0-9) is shown as one digit; 10-15 show blank.',
   },
 };
 

@@ -7,10 +7,10 @@
  * teardown — and is engine-independent; everything specific to one simulator sits
  * behind `SimEngine`.
  */
-
 import type { ErrorStage, VhdlFileInput, WaveFormat } from '../protocol.js';
 import type { BatchHandle, RunHandle } from '../runtime.js';
 import type { BoardIo } from './boardPorts.js';
+import type { PinMap } from './ioPins.js';
 
 export type Language = 'vhdl' | 'verilog';
 
@@ -57,6 +57,21 @@ export interface RunPlan {
    * was asked for or the mode does not record (board runs, W1).
    */
   readonly wave?: PlannedWave;
+  /**
+   * The top's own ports, for I/O Planning (PRD.md § 7.2 step 2). Present when the
+   * engine could read them; the flow panel lists them and nothing else.
+   */
+  readonly ports?: readonly DesignPort[];
+}
+
+/** One port of the student's top, as I/O Planning lists it (PRD.md § 7.2). */
+export interface DesignPort {
+  /** As the design spells it. */
+  readonly name: string;
+  /** `in`/`out`/`inout`, from the language's own port reader. */
+  readonly direction: string;
+  /** Bits; undefined when HDLBoard cannot read the subtype. */
+  readonly width?: number;
 }
 
 /**
@@ -93,6 +108,12 @@ export interface PrepareRequest {
    * compile error, not a silent fallback to the Default names.
    */
   readonly board: BoardIo;
+  /**
+   * The pins I/O Planning assigned, `design port (lower case) -> board port (lower case)`
+   * (PRD.md § 7.6). Omitted, every port is matched by name, which is what every run did
+   * before pinning existed.
+   */
+  readonly pins?: PinMap;
 }
 
 /** A failure is a value: a design that does not compile is an expected outcome, not a bug. */

@@ -23,6 +23,22 @@ import {
   writeSync,
 } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import type { BoardFiles, DesignPort, PrepareRequest, PrepareResult, RunPlan, SimEngine, WaveRequest } from './engines/types.js';
+import {
+  begin,
+  canProgram,
+  fail,
+  failedPrerequisite,
+  FLOW_STEPS,
+  flowWire,
+  initialFlow,
+  invalidate,
+  planRun,
+  requestStep,
+  succeed,
+  type FlowState,
+  type FlowStep,
+} from './engines/designFlow.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BatchHandle, BatchResult, RunHandle } from './runtime.js';
@@ -31,8 +47,9 @@ import { normaliseBoardBits } from './engines/boardBits.js';
 import { mismatchedFiles, mismatchMessage } from './engines/language.js';
 import { selectEngine } from './engines/selectEngine.js';
 import { firstUnsafeName } from './engines/sourceNames.js';
-import type { BoardFiles, PrepareRequest, PrepareResult, RunPlan, SimEngine, WaveRequest } from './engines/types.js';
+
 import { DEFAULT_BOARD_IO, type BoardIo } from './engines/boardPorts.js';
+import { connectPorts, pinTargets } from './engines/ioPins.js';
 import { describeStimFields, sameStimMeaning, stateLength, stimLength } from './engines/boardShape.js';
 import type { DecodedBoard } from './boardFrame.js';
 import { type ErrorStage, type ServerFrame, type StimStep, type VhdlFileInput, type WaveFormat, type WaveStatus } from './protocol.js';
@@ -144,6 +161,14 @@ function renamed(from: string, to: string): boolean {
 }
 
 /**
+ * A value that changes exactly when the sources do: `source` invalidation (§ 7.4) must
+ * fire on an edit and must not fire on a re-run of the same text.
+ */
+function sourcesFingerprint({ files, topFile, runTarget }: { files: readonly VhdlFileInput[]; topFile?: string; runTarget?: string }): string {
+  return JSON.stringify([topFile ?? null, runTarget ?? null, files.map((file) => [file.name, file.content])]);
+}
+
+/**
  * Why a run cannot even be compiled, or `undefined` when it can. Names come first:
  * every engine writes them into the session directory, so no engine may see one that
  * would land outside it.
@@ -229,6 +254,28 @@ export class Session {
    * one, runs are refused with its reason until a valid one arrives.
    */
   private decodedBoard: DecodedBoard = { ok: true, board: DEFAULT_BOARD_IO };
+  /**
+   * The design flow's state (PRD.md § 7.3, § 8.2): kept here, not in the frontend, so
+   * the sequence and its prerequisites are enforced on the backend. The pin
+   * assignments I/O Planning produced are the constraint Bitstream re-checks.
+   */
+  private flow: FlowState = initialFlow();
+  /** The design ports of the last successful synthesis, as I/O Planning lists them. */
+  private flowPorts: readonly DesignPort[] = [];
+  /** The pin assignment of every port that has one, by port name (§ 7.2 step 2). */
+  private constraints = new Map<string, string>();
+  /**
+   * I/O Planning's manual pins (§ 7.6), `design port (lower case) -> board port (lower
+   * case)`. Kept apart from `constraints` so a re-run of I/O Planning keeps the student's
+   * choice instead of overwriting it with the name match.
+   */
+  private pins = new Map<string, string>();
+  /** What the source looked like when Synthesis last ran; a different one is `source` (§ 7.4). */
+  private synthesisedFrom: string | null = null;
+  /** The last RUN's sources: Synthesis re-prepares them without starting a simulation. */
+  private lastSources: { files: readonly VhdlFileInput[]; topFile?: string; runTarget?: string } | null = null;
+  /** The last RUN's top file, to tell a changed source from a changed top module (§ 7.4). */
+  private lastTopFile: string | undefined = undefined;
   /** The compile in progress, if any: the next one waits for it (`prepareInTurn`). */
   private compiling: Promise<void> = Promise.resolve();
   /** The board of the run in progress: what its `STIM` and `STATE` lengths are (§ 6.2). */
@@ -323,6 +370,208 @@ export class Session {
     });
   }
 
+  /**
+   * `FLOW-RUN <step>`: one step of the design flow (PRD.md § 7.5). The sequence is
+   * enforced here, not in the panel: a step whose prerequisites are missing either runs
+   * them first (`implement`, `bitstream`) or is refused (`program`).
+   */
+  async handleFlowRun(step: string, sources?: { files: readonly VhdlFileInput[]; topFile?: string; runTarget?: string }): Promise<void> {
+    if (!(FLOW_STEPS as readonly string[]).includes(step)) {
+      this.send({ verb: 'ERROR', stage: 'protocol', text: `FLOW-RUN has an unknown step: ${JSON.stringify(step)}` });
+      return;
+    }
+    // The panel sends the editor's sources with every step, so Synthesis works on what is
+    // open rather than on whatever a previous RUN happened to upload. It goes through
+    // noteSources() so § 7.4's invalidation fires here too: an edit followed by a flow
+    // step must mark the earlier steps `outdated`, not silently reuse their result.
+    if (sources !== undefined) this.noteSources(sources);
+    const wanted = step as FlowStep;
+    const request = requestStep(this.flow, wanted);
+    // § 7.5, "Run (apa pun)" with a prerequisite `failed`: the reason is that step's, and
+    // offering to run the missing steps again would only fail on the same cause. A step that
+    // is merely missing is not here — it is offered, and runs once it is done.
+    const failed = failedPrerequisite(this.flow, wanted);
+    // § 7.5, "Run (apa pun)": a prerequisite that failed is named, so the student is sent back
+    // to it instead of watching the same failure once more.
+    if (failed !== undefined) {
+      this.send({ verb: 'LOG', text: `Cannot run ${wanted}: ${failed} failed. Fix ${failed} and run it again.` });
+      this.sendFlow();
+      return;
+    }
+    if (request.kind === 'refuse') {
+      this.send({ verb: 'LOG', text: `Cannot run ${wanted}: ${request.missing.join(', ') || 'it is already running'}.` });
+      this.sendFlow();
+      return;
+    }
+    // § 7.5's dialog, answered "yes": the missing steps run in flow order, then the step.
+    // A step that fails stops the chain: the next one would only fail on the same cause.
+    for (const candidate of planRun(this.flow, wanted)) {
+      if (!(await this.runFlowStep(candidate))) break;
+    }
+    this.sendFlow();
+  }
+
+
+  /** Runs one step; `false` once it has failed, so the caller stops planning more. */
+  private async runFlowStep(step: FlowStep): Promise<boolean> {
+    if (this.destroyed) return false;
+    this.flow = begin(this.flow, step);
+    this.sendFlow();
+    const outcome = await this.stepOutcome(step);
+    if (this.destroyed) return false;
+    if (outcome === undefined) {
+      this.flow = succeed(this.flow, step);
+      return true;
+    }
+    this.flow = fail(this.flow, step);
+    this.send({ verb: 'LOG', text: outcome });
+    return false;
+  }
+
+  /** What a step does; `undefined` on success, otherwise the message saying why it failed. */
+  private async stepOutcome(step: FlowStep): Promise<string | undefined> {
+    switch (step) {
+      case 'synthesis':
+        return this.synthesise();
+      case 'ioPlanning':
+        return this.planIo();
+      case 'implement':
+        return this.note('Implementation is simulated: no netlist is built, the placement is explained in the log.');
+      case 'bitstream':
+        return this.bitstreamCheck();
+      case 'hardware':
+        return this.note('Hardware Manager opened: the virtual Nexys A7 is ready to be connected.');
+      case 'connect':
+        return this.note('Auto Connect: the virtual board is connected.');
+      case 'program':
+        return this.program();
+    }
+  }
+
+  /** A step that only says what it did. */
+  private note(text: string): undefined {
+    this.send({ verb: 'LOG', text });
+    return undefined;
+  }
+
+  /** § 7.5's DRC: a top-level port without a pin is an error, not a warning. */
+  private bitstreamCheck(): string | undefined {
+    const unconstrained = this.flowPorts.filter((port) => !this.constraints.has(port.name)).map((port) => port.name);
+    if (unconstrained.length === 0) return undefined;
+    return `Unconstrained logical port: ${unconstrained.join(', ')}. Assign every port in I/O Planning first.`;
+  }
+
+  /**
+   * § 7.2 step 7: programming is real in effect - the board then runs the design, from the
+   * sources Synthesis just elaborated.
+   */
+  private async program(): Promise<string | undefined> {
+    if (!canProgram(this.flow)) return 'Program Device needs a bitstream and a connection.';
+    const sources = this.lastSources;
+    if (sources === null) return 'Program Device needs a design: run it once first.';
+    const started = await this.handleRun(sources.files, sources.topFile, sources.runTarget);
+    return started ? undefined : 'The design did not start: the board was not programmed.';
+  }
+
+  /** Synthesis is real: the same analyse + elaborate a RUN performs, without starting a simulation. */
+  private async synthesise(): Promise<string | undefined> {
+    const sources = this.lastSources;
+    if (sources === null) return 'Synthesis needs a design: run it once, then synthesize.';
+    const request = ++this.runRequest;
+    const board = this.boardForRun();
+    if (board === undefined) return 'The last BOARD frame was not valid.';
+    const engine = this.chooseEngine(sources.topFile);
+    const refusal = refusalBeforeCompile(sources.files, sources.topFile, engine);
+    if (refusal !== undefined) return refusal;
+    const prepared = await this.prepareInTurn(engine, request, { dir: this.dir, ...sources, board, pins: this.pins });
+    if (prepared === undefined) return 'Synthesis was superseded.';
+    if (!prepared.ok) return prepared.text;
+    this.adoptSynthesis(prepared.plan, sources);
+    return undefined;
+  }
+
+  /** What a successful elaboration leaves behind: the ports the panel lists, and the sources they came from. */
+  private adoptSynthesis(plan: RunPlan, sources: NonNullable<Session['lastSources']>): void {
+    for (const message of plan.messages) this.send({ verb: 'LOG', text: message });
+    this.flowPorts = plan.ports ?? [];
+    this.synthesisedFrom = sourcesFingerprint(sources);
+    const count = this.flowPorts.length;
+    this.send({ verb: 'LOG', text: `Synthesis finished: ${count} port${count === 1 ? '' : 's'} elaborated.` });
+  }
+
+  /**
+   * I/O Planning writes the constraint the bitstream is checked against: each design port
+   * that the board has, with the board port it drives. The board profile carries no
+   * physical pin numbers (docs/board_io_config_spec.md), so this records the binding the
+   * testbench actually makes rather than inventing an XDC pin location.
+   *
+   * The wiring is `connectPorts`' answer, not a second name match: a port the student
+   * pinned (§ 7.6) drives the board port they chose, and the name it would have matched
+   * is left to whatever took it.
+   */
+  private planIo(): string | undefined {
+    const board = this.boardForRun();
+    if (board === undefined) return 'The last BOARD frame was not valid.';
+    const { errors } = connectPorts(this.flowPorts, board, this.pins);
+    for (const error of errors) this.send({ verb: 'LOG', text: error });
+    const rows = this.writeConstraints(board);
+    if (rows.length === 0) return 'No design port matches a board port: there is no wire to constrain.';
+    this.send({ verb: 'LOG', text: `I/O Planning: ${rows.join(', ')}.` });
+    return undefined;
+  }
+
+  /** Writes the constraint table from the current wiring; the rows it wrote, for the log. */
+  private writeConstraints(board: BoardIo): readonly string[] {
+    const { connected } = connectPorts(this.flowPorts, board, this.pins);
+    // A pin on the display's segment word constrains the port to that word, not to one bit of it.
+    const labels = new Map(pinTargets(board).flatMap((choice) => choice.bits.map((binding) => [binding.key, choice.label] as const)));
+    this.constraints = new Map(connected.map(({ name, binding }) => [name, labels.get(binding.key) ?? binding.name]));
+    return [...this.constraints].map(([port, boardPort]) => `${port} -> ${boardPort}`);
+  }
+
+  /**
+   * `FLOW-PIN <port> [<board port>]`: the student's pin for one design port (§ 7.6), or
+   * none to go back to the name match. An invalid pin is refused with the reason and the
+   * old wiring kept, so the table never shows a wire the run would not make.
+   */
+  handleFlowPin(port: string, boardPort?: string): void {
+    const board = this.boardForRun();
+    if (board === undefined) {
+      this.send({ verb: 'LOG', text: 'The last BOARD frame was not valid.' });
+      return;
+    }
+    const designPort = this.flowPorts.find((candidate) => candidate.name === port);
+    if (designPort === undefined) {
+      this.send({ verb: 'LOG', text: `I/O Planning has no port named ${port}: run Synthesis first.` });
+      return;
+    }
+    const next = new Map(this.pins);
+    if (boardPort === undefined) next.delete(port.toLowerCase());
+    else {
+      next.set(port.toLowerCase(), boardPort.toLowerCase());
+      const { errors } = connectPorts(this.flowPorts, board, next);
+      if (errors.length > 0) {
+        for (const error of errors) this.send({ verb: 'LOG', text: error });
+        return;
+      }
+    }
+    this.pins = next;
+    // I/O Planning is the panel the student edits, so its result follows the pin at once
+    // rather than waiting for a re-run that § 7.4 would not even schedule.
+    if (this.flow.statuses.ioPlanning === 'done') {
+      const rows = this.writeConstraints(board);
+      this.send({ verb: 'LOG', text: `I/O Planning: ${rows.join(', ')}.` });
+    }
+    // § 7.4: a pin change leaves synthesis alone and makes what followed it outdated.
+    this.flow = invalidate(this.flow, 'constraint');
+    this.sendFlow();
+  }
+
+  /** The flow as the panel shows it: every status, the board stage, and the constraint. */
+  sendFlow(): void {
+    this.send({ verb: 'FLOW', state: JSON.stringify(flowWire(this.flow, this.flowPorts, { constraints: this.constraints, board: this.boardForRun(), pins: this.pins })) });
+  }
+
   private waveRequest(): WaveRequest | undefined {
     return this.waveRequested ? { vhdlFormat: this.vhdlWaveFormat } : undefined;
   }
@@ -401,41 +650,60 @@ export class Session {
     this.send({ verb: 'WAVE-READY', run: wave.run, format: wave.format, bytes, status });
   }
 
-  async handleRun(files: VhdlFileInput[], topFile?: string, runTarget?: string): Promise<void> {
+  async handleRun(files: readonly VhdlFileInput[], topFile?: string, runTarget?: string): Promise<boolean> {
+    this.noteSources({ files, topFile, runTarget });
     // Cleared first: the run being replaced is not offered, its waveform is obsolete (W10).
     this.clearWave();
     this.stopActive('stopped');
     this.state = 'compiling';
     const request = ++this.runRequest;
+    return this.compileAndStart(request, { files, topFile, runTarget });
+  }
 
+  /**
+   * § 7.4: a changed source makes what the flow produced `outdated` and a programmed board
+   * `stale`. The same sources are not a change - a re-run leaves Synthesis `done`, which is
+   * what a student expects from pressing Run twice.
+   */
+  private noteSources(sources: NonNullable<Session['lastSources']>): void {
+    const fingerprint = sourcesFingerprint(sources);
+    if (this.synthesisedFrom !== null && this.synthesisedFrom !== fingerprint) {
+      this.flow = invalidate(this.flow, this.lastTopFile === sources.topFile ? 'source' : 'top');
+      this.sendFlow();
+    }
+    this.lastTopFile = sources.topFile;
+    this.lastSources = sources;
+  }
+  /** Compiles the sources and keeps what `startPrepared` makes of the result. */
+  private async compileAndStart(request: number, sources: NonNullable<Session['lastSources']>): Promise<boolean> {
+    const { files, topFile, runTarget } = sources;
     const board = this.boardForRun();
-    if (board === undefined) return;
-
+    if (board === undefined) return false;
     const engine = this.chooseEngine(topFile);
     const refusal = refusalBeforeCompile(files, topFile, engine);
     if (refusal !== undefined) {
       this.failRun('analyze', refusal);
-      return;
+      return false;
     }
-
-    const prepared = await this.prepareInTurn(engine, request, { dir: this.dir, files, topFile, runTarget, wave: this.waveRequest(), board });
+    const prepared = await this.prepareInTurn(engine, request, { dir: this.dir, files, topFile, runTarget, wave: this.waveRequest(), board, pins: this.pins });
     // Closed, or superseded by a newer RUN while compiling: starting now would leave a
     // simulator running that nothing tracks, and even a failure is no longer news.
-    if (prepared === undefined || this.destroyed || request !== this.runRequest) return;
-    this.startPrepared(engine, prepared);
+    if (prepared === undefined || this.destroyed || request !== this.runRequest) return false;
+    return this.startPrepared(engine, prepared);
   }
 
   /** A finished compile: its failure, or the run it prepared. */
-  private startPrepared(engine: SimEngine, prepared: PrepareResult): void {
+  private startPrepared(engine: SimEngine, prepared: PrepareResult): boolean {
     if (!prepared.ok) {
       this.failRun(prepared.stage, prepared.text);
-      return;
+      return false;
     }
     this.engine = engine;
     this.plan = prepared.plan;
     for (const message of prepared.plan.messages) this.send({ verb: 'LOG', text: message });
     if (prepared.plan.mode === 'batch') this.startBatchRun(engine, prepared.plan);
     else this.startRun(engine, prepared.plan);
+    return true;
   }
 
   /**

@@ -319,6 +319,8 @@ export function startBackend(opts: BackendOptions = {}): BackendHandle {
         case 'HELLO':
           helloed = true;
           send({ verb: 'WELCOME', version: PROTOCOL_VERSION });
+          // The panel renders from FLOW alone, so a fresh connection gets one now (§ 7.3).
+          session.sendFlow();
           break;
         case 'RUN':
           if (!helloed) {
@@ -347,6 +349,12 @@ export function startBackend(opts: BackendOptions = {}): BackendHandle {
           break;
         case 'STOP':
           session.handleStop();
+          break;
+        case 'FLOW-RUN':
+          void session.handleFlowRun(frame.step, frame.files === undefined ? undefined : { files: frame.files, topFile: frame.topFile, runTarget: frame.runTarget });
+          break;
+        case 'FLOW-PIN':
+          session.handleFlowPin(frame.port, frame.boardPort);
           break;
         case 'PING':
           send({ verb: 'PONG' });

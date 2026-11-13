@@ -121,16 +121,28 @@ function independentAssembly(displayCount: number): string {
   return `${NOW_BITS}${lines.join(`\n${CONTINUATION}& `)};`;
 }
 
-/** The `STATE` bits, built on every poll: the LEDs, then each display's word. */
+/**
+ * The `STATE` bits, built on every poll: the LEDs, then each display's word. A
+ * multiplexed board's poll starts from its own copies of the capture (§ 7.4), so
+ * every digit of one `STATE` is decoded from the same instant.
+ */
 export function stateAssembly(board: BoardIo): string {
   const displays = board.sevenSegment;
   if (displays.kind === 'independent') return independentAssembly(displays.ports.length);
-  return multiplexedAssembly(displays, board.leds.count, displayWordWidth(board));
+  return `${ioPollCopies(board)}${multiplexedAssembly(displays, board.leds.count, displayWordWidth(board))}`;
 }
 
 /** The io process's extra variable for the decoder: the word of the display being built. */
 export function ioVariables(board: BoardIo): string {
-  return board.sevenSegment.kind === 'multiplexed' ? `\n    variable word : ${vector(displayWordWidth(board))};` : '';
+  if (board.sevenSegment.kind !== 'multiplexed') return '';
+  const digits = board.sevenSegment.digits;
+  return [
+    '',
+    `    variable word : ${vector(displayWordWidth(board))};`,
+    `    variable held : digit_words_t := (others => (others => SEG_OFF));`,
+    `    variable seen : ${vector(digits)} := (others => '0');`,
+    '    variable lit_at : digit_times_t := (others => 0 ns);',
+  ].join('\n');
 }
 
 // --- The multiplexed-display decoder (§ 7.4) ---------------------------------------
@@ -153,7 +165,12 @@ function decoderDeclarations(displays: MultiplexedDisplays): string[] {
   ];
 }
 
-/** Latches the segments each digit last showed while it was enabled; empty for independent displays. */
+/**
+ * Latches the segments each digit last showed while it was enabled; empty for
+ * independent displays. The capture waits one delta after a change: in the same delta
+ * the enables and the segments a DUT drives are each partly old, and which of the two
+ * the poll observes first is a property of the delta cycle, not of the board (§ 7.4).
+ */
 export function decoderProcess(board: BoardIo): string {
   const displays = board.sevenSegment;
   if (displays.kind !== 'multiplexed') return '';
@@ -162,33 +179,37 @@ export function decoderProcess(board: BoardIo): string {
 
   -- A multiplexed display, decoded into stable digits (docs/board_io_v2_spec.md § 7.4):
   -- each digit keeps the segments it showed while enabled, for DISPLAY_PERSIST.
-  mux_capture : process (${sensitivity})
-    variable was_on : std_logic_vector(${displays.digits - 1} downto 0) := (others => '0');
+  mux_capture : process
+    variable fired : boolean := false;
   begin
-    for d in 0 to ${displays.digits - 1} loop
-      if an_sig(d) = AN_ON then
-        digit_word(d) <= ${liveWord(displays)};
-        digit_last(d) <= now;
-        digit_seen(d) <= '1';
-        was_on(d) := '1';
-      elsif was_on(d) = '1' then
-        -- Switched off: the hold of DISPLAY_PERSIST starts now.
-        digit_last(d) <= now;
-        was_on(d) := '0';
-      end if;
-    end loop;
+    if fired then
+      fired := false;
+      for d in 0 to ${displays.digits - 1} loop
+        if an_sig(d) = AN_ON then
+          digit_word(d) <= ${liveWord(displays)};
+          digit_last(d) <= now;
+          digit_seen(d) <= '1';
+        end if;
+      end loop;
+    else
+      fired := true;
+      wait for 0 ns;
+    end if;
+    wait on ${sensitivity};
   end process;`;
+}
+
+/** The poll's copies of the capture's signals: one copy keeps the digits of one STATE consistent. */
+export function ioPollCopies(board: BoardIo): string {
+  if (board.sevenSegment.kind !== 'multiplexed') return '';
+  return '      held := digit_word;\n      seen := digit_seen;\n      lit_at := digit_last;\n';
 }
 
 function multiplexedAssembly(displays: MultiplexedDisplays, ledCount: number, width: number): string {
   return `      now_bits(1 to ${ledCount}) := slv2str(ledr_sig);
       for d in 0 to ${displays.digits - 1} loop
-        if an_sig(d) = AN_ON then
-          word := ${liveWord(displays)};
-        elsif an_sig(d) /= not AN_ON then
-          word := (others => 'X');
-        elsif digit_seen(d) = '1' and now - digit_last(d) <= DISPLAY_PERSIST then
-          word := digit_word(d);
+        if seen(d) = '1' and now - lit_at(d) <= DISPLAY_PERSIST then
+          word := held(d);
         else
           word := (others => SEG_OFF);
         end if;

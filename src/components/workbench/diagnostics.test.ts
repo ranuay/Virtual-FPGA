@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Rune Langøy
 
 import { describe, expect, test } from 'vitest';
-import { ICARUS_SYNTAX_HINT, parseDiagnostics, recognizeLine, type Diagnostic, type LineResult } from './diagnostics';
+import { GHDL_BOUNDS_HINT, ICARUS_SYNTAX_HINT, parseDiagnostics, recognizeLine, type Diagnostic, type LineResult } from './diagnostics';
 import * as fixture from './diagnostics.fixtures';
 
 function diagnostic(
@@ -44,13 +44,20 @@ describe('recognizeLine', () => {
     [
       'P-8',
       'ghdl:error: index (5) out of bounds (0 to 3) at bound.vhdl:9',
-      diagnostic('bound.vhdl', 9, 'error', 'index (5) out of bounds (0 to 3)'),
+      diagnostic('bound.vhdl', 9, 'error', 'index (5) out of bounds (0 to 3)', { details: [GHDL_BOUNDS_HINT] }),
     ],
     [
       'P-9',
       'C:\\Program Files\\HDLBoard\\resources\\ghdl\\bin\\ghdl.exe:error: index (5) out of bounds (0 to 3) at bound.vhdl:9',
-      diagnostic('bound.vhdl', 9, 'error', 'index (5) out of bounds (0 to 3)'),
+      diagnostic('bound.vhdl', 9, 'error', 'index (5) out of bounds (0 to 3)', { details: [GHDL_BOUNDS_HINT] }),
     ],
+    [
+      'P-9b',
+      'ghdl:error: bound check failure at Nexys_A7.vhdl:28',
+      diagnostic('Nexys_A7.vhdl', 28, 'error', 'bound check failure', { details: [GHDL_BOUNDS_HINT] }),
+    ],
+    // A GHDL error that is not a failed check keeps no hint.
+    ['P-9c', 'ghdl:error: internal error at ghdl.adb:12', diagnostic('ghdl.adb', 12, 'error', 'internal error')],
     ['P-10', 'ghdl:error: simulation failed', NONE],
     ['P-11', '/usr/bin/ghdl-mcode:error: cannot find entity or configuration nosuch', NONE],
     ['P-12', 'syntax.v:6: syntax error', diagnostic('syntax.v', 6, 'error', 'syntax error', { details: [ICARUS_SYNTAX_HINT] })],

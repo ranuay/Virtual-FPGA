@@ -20,6 +20,7 @@
 import type { TiedInput } from '../tbTemplate.js';
 import { boardInputNames, boardPortKeys, type BoardIo } from './boardPorts.js';
 import { suggestBoardInput, suggestBoardOutput } from './boardPortSuggestions.js';
+import { connectPorts, type PinMap } from './ioPins.js';
 import { ghdlPosition, portDeclarations, type PortDeclaration } from './vhdlPorts.js';
 
 export interface TopSource {
@@ -30,6 +31,8 @@ export interface TopSource {
   readonly ports: ReadonlySet<string>;
   /** The board the run is for: which ports are board ports, and what a typo was meant to be. */
   readonly board: BoardIo;
+  /** I/O Planning's pins (§ 7.6): a port the student pinned is wired, whatever its name. */
+  readonly pins?: PinMap;
 }
 
 /** What the run does with the top entity's extra ports. */
@@ -78,10 +81,16 @@ const OTHER_PORT_WORDING: ExtraPortWording = { kind: 'port', effect: 'the board 
 const inBackticks = (text: string): string => `\`${text}\``;
 const capitalized = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
-/** The entity's ports that are neither the board's nor the legacy `rst` the testbench wires itself. */
+/**
+ * The entity's ports that are neither the board's nor the legacy `rst` the testbench wires
+ * itself. A pinned port is wired too, whatever its name (§ 7.6), so it is not extra.
+ */
 function extraPortsOf(top: TopSource): PortDeclaration[] {
   const boardPorts = boardPortKeys(top.board, { legacyReset: true });
-  return portDeclarations(top.content, top.entityName).filter((port) => !boardPorts.has(port.name.toLowerCase()));
+  const wired = new Set(connectPorts(portDeclarations(top.content, top.entityName).map((port) => ({ name: port.name })), top.board, top.pins).connected.map((wire) => wire.key));
+  return portDeclarations(top.content, top.entityName).filter(
+    (port) => !boardPorts.has(port.name.toLowerCase()) && !wired.has(port.name.toLowerCase()),
+  );
 }
 
 /** The constant 0 of the port's type, or `undefined` when it is not a bit or a constrained vector of bits. */

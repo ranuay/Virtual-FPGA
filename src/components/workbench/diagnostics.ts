@@ -63,6 +63,17 @@ const INCLUDE_LINE_OFFSET = -1;
 export const ICARUS_SYNTAX_HINT =
   "Icarus reports the line where it noticed the problem. If this line looks right, check the end of the previous line of code (a missing ';' is the usual cause).";
 
+/**
+ * GHDL ending a run on a failed range check. Unlike a failed assertion, the failure is a
+ * signal value at simulation time - the `index (9) out of bounds (7 downto 0)` clause says
+ * which - so the sentence names the rule instead of guessing the fix.
+ */
+export const GHDL_BOUNDS_HINT =
+  'GHDL stops the run on a failed range check: a signal held a value outside its type or range (the index or value it names above). The board is not at fault.';
+
+/** GHDL's two wordings for a failed range check: the index/value clause, and the bare one. */
+const BOUNDS_CHECK = /out of bounds|bound check failure/;
+
 const GHDL_LEVEL: Readonly<Record<string, DiagnosticSeverity | undefined>> = {
   error: 'error',
   fatal: 'error',
@@ -147,9 +158,14 @@ const RECOGNIZERS: readonly Recognizer[] = [
     interpret: (groups) => byLevel(GHDL_REPORT_LEVEL, groups),
   },
   {
-    // GHDL run, failed check: "ghdl:error: index (5) out of bounds (0 to 3) at bound.vhdl:9"
+    // GHDL run, failed check: "ghdl:error: index (5) out of bounds (0 to 3) at bound.vhdl:9",
+    // or "ghdl:error: bound check failure at Nexys_A7.vhdl:28" (GHDL 6).
     pattern: /^(?:.*[\\/])?ghdl[^\\/:]*:error: (?<message>.+) at (?<file>[^:]+):(?<line>\d+)$/,
-    interpret: (groups) => diagnosticOrNone(build(groups, 'error')),
+    interpret: (groups) => {
+      const result = diagnosticOrNone(build(groups, 'error'));
+      if (result.kind !== 'diagnostic' || !BOUNDS_CHECK.test(result.diagnostic.message)) return result;
+      return { kind: 'diagnostic', diagnostic: { ...result.diagnostic, details: [GHDL_BOUNDS_HINT] } };
+    },
   },
   {
     // vvp run: "ERROR: tb.v:6: values differ"

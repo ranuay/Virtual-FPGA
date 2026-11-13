@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Rune Langøy
 
 import { describe, expect, test } from 'vitest';
-import { ICARUS_SYNTAX_HINT, parseDiagnostics, type Diagnostic } from './diagnostics';
+import { GHDL_BOUNDS_HINT, ICARUS_SYNTAX_HINT, parseDiagnostics, type Diagnostic } from './diagnostics';
 import * as fixture from './diagnostics.fixtures';
 import { locateDiagnostics, type RunSnapshot } from './diagnosticLocation';
 import { addToFiles, NO_DIAGNOSTICS } from './diagnosticStore';
@@ -20,6 +20,7 @@ function goldenOf(capture: string): string[] {
 }
 
 const HINT = ICARUS_SYNTAX_HINT;
+const BOUNDS = GHDL_BOUNDS_HINT;
 
 describe('golden: whole captures', () => {
   test.each<[string, string, string[]]>([
@@ -53,7 +54,9 @@ describe('golden: whole captures', () => {
       fixture.GHDL_RUNTIME_REPORTS,
       ['error tb.vhdl:8:9 values differ', 'error tb.vhdl:9:9 fatal stop', 'warning tb.vhdl:7:9 warning level'],
     ],
-    ['G-7', fixture.GHDL_RUNTIME_BOUND, ['error bound.vhdl:9 index (5) out of bounds (0 to 3)']],
+    ['G-7', fixture.GHDL_RUNTIME_BOUND, [`error bound.vhdl:9 index (5) out of bounds (0 to 3) | ${BOUNDS}`]],
+    ['G-7b', fixture.GHDL6_RUNTIME_BOUND, [`error m.vhdl:10 index (9) out of bounds (0 to 7) | ${BOUNDS}`]],
+    ['G-7c', fixture.GHDL6_BOUND_CHECK, [`error Nexys_A7.vhdl:28 bound check failure | ${BOUNDS}`]],
     ['G-8', fixture.GHDL_WRAPPER_MISMATCH, [`error hdl_board_tb.vhdl:55:15 actual constraints don't match formal ones`]],
     ['G-9', fixture.ICARUS_SYNTAX, [`error syntax.v:6 syntax error | ${HINT}`]],
     [

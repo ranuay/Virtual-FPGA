@@ -22,7 +22,7 @@
  * follows § 7.3's five statuses.
  */
 import type { BoardIo } from './boardPorts.js';
-import { pinChoices, pinTargets } from './ioPins.js';
+import { pinChoices, pinTargets, type PinChoice } from './ioPins.js';
 import type { DesignPort } from './types.js';
 
 /** The executable steps. `synthesis`…`program` are the seven rows of PRD.md § 7.2. */
@@ -251,25 +251,35 @@ export function flowWire(state: FlowState, ports: readonly DesignPort[], wiring:
   return {
     steps: FLOW_STEPS.map((step) => ({ step, status: state.statuses[step], educational: isEducational(step) })),
     board: state.board,
-    ports: ports.map((port) => {
-      const constraint = constraints.get(port.name);
-      const pinned = pins.get(port.name.toLowerCase());
-      // The pin wins; without one, the constraint I/O Planning wrote names the same board port.
-      const choice = targets.get(pinned ?? (constraint ?? '').toLowerCase());
-      const pin = pinned === undefined ? undefined : (choice?.label ?? pinned);
-      // A word pin's package pins are its bits', which the board lists one port at a time.
-      const word = choice === undefined || choice.bits.length < 2 ? undefined : choice.bits.map((binding) => binding.name);
-      const choices = board === undefined ? undefined : pinChoices(port, board).map((option) => option.label);
-      return {
-        name: port.name,
-        direction: port.direction,
-        width: port.width,
-        ...(constraint === undefined ? {} : { constraint }),
-        ...(pin === undefined ? {} : { pin }),
-        ...(word === undefined ? {} : { bits: word }),
-        ...(choices === undefined ? {} : { choices }),
-      };
-    }),
+    ports: ports.map((port) => portRow(port, { constraints, board, pins, targets })),
     canProgram: canProgram(state),
   };
+}
+
+/** What one port row is derived from: the wiring, plus the board ports keyed for lookup. */
+interface RowContext {
+  readonly constraints: ReadonlyMap<string, string>;
+  readonly board?: BoardIo;
+  readonly pins: ReadonlyMap<string, string>;
+  readonly targets: ReadonlyMap<string, PinChoice>;
+}
+function portRow(port: DesignPort, { constraints, board, pins, targets }: RowContext): FlowWirePort {
+  const constraint = constraints.get(port.name);
+  const pinned = pins.get(port.name.toLowerCase());
+  // The pin wins; without one, the constraint I/O Planning wrote names the same board port.
+  const chosen = targets.get(pinned ?? (constraint ?? '').toLowerCase());
+  const pin = pinned && chosen?.label;
+  // A word pin's package pins are its bits', which the board lists one port at a time.
+  const word = chosen === undefined || chosen.bits.length < 2 ? undefined : chosen.bits.map((binding) => binding.name);
+  // An absent key is how the panel spells "no constraint", "no pin", "no choice" (§ 7.3).
+  const row = {
+    name: port.name,
+    direction: port.direction,
+    width: port.width,
+    constraint,
+    pin,
+    bits: word,
+    choices: board === undefined ? undefined : pinChoices(port, board).map((option) => option.label),
+  };
+  return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)) as unknown as FlowWirePort;
 }

@@ -24,15 +24,22 @@ conflict in `src/boards/*` and `server/src/session.ts` (AGENTS.md, Branches).
 
 ## Ready to start
 
-T1 (virtual serial terminal, PRD Phase 5 tasks 3-7) is implemented and not yet
-merged - it landed on `acsl/design-flow` rather than its own branch. The code
-lives in
-`server/src/pluginLine.ts`, `server/src/pluginCatalog.ts`, `server/src/library.ts`,
-`server/plugins/` and `src/components/workbench/plugins/`. Observed
-end to end on 2026-11-13: the real backend answered a design driving
-`uart_monitor` with `PLUGIN uart mon0 179265` / `00 FE`, and the browser showed
-it in a `UART MON0` pane. `uartPayload.ts` was not needed - the pane formats the
-payload itself.
+T1 (virtual serial terminal, PRD Phase 5 tasks 3-7) does not exist on `main`, and
+no branch in this fork carries it - the plugin work is on `upstream/impl_plugin`,
+in `server/src/pluginLine.ts`, `server/src/pluginCatalog.ts`,
+`server/src/engines/pluginLibrary.ts`, `server/plugins/vhdl/` and
+`src/components/workbench/plugins/`, committed as `ee63220` and `ffc3cbf`. T1 is
+therefore a port, not a wiring job: take upstream's files, or let the upstream
+branch come in by merge, and check each of our workbench modules against it -
+this fork has moved since. One thing upstream settles already: `uartPayload.ts`
+is not needed, the pane formats the payload itself.
+
+Observed end to end on 2026-11-13, against *this* fork's backend rather than
+upstream's: a design driving `uart_monitor` answered `PLUGIN uart mon0 179265` /
+`00 FE`, and the browser showed it in a `UART MON0` pane. That run used the
+working-tree copy of `server/src/pluginLine.ts` and friends, which differs from
+`upstream/impl_plugin`'s copy (`server/src/library.ts` is not upstream's at all),
+so the pair still has to be reconciled before either is called done.
 
 
 | #   | Branch          | What                                                                                                                                                                                                                | Done when                                                                                            |

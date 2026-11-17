@@ -26,13 +26,13 @@
 Perubahan utama dari v1.1.0:
 
 1. **Ruang lingkup dikunci: VHDL + Nexys A7 saja.** Bahasa target dan board target
-   dinyatakan satu kali di header dan di § 1.4a; board lain yang sudah ada tetap jalan
-   tapi keluar dari roadmap, Verilog/Icarus tetap tersedia tapi bukan target.
+dinyatakan satu kali di header dan di § 1.4a; board lain yang sudah ada tetap jalan
+tapi keluar dari roadmap, Verilog/Icarus tetap tersedia tapi bukan target.
 2. **Bab 3 dan Bab 4 diaudit ulang terhadap keputusan itu** (§ 3.1 catatan baru, § 3.0
-   Bahasa). Verilog dihapus dari daftar bukti yang wajib; contoh VHDL yang wajib ada
-   disebut eksplisit.
+Bahasa). Verilog dihapus dari daftar bukti yang wajib; contoh VHDL yang wajib ada
+disebut eksplisit.
 3. **Phase 1 dan Phase 2 dipertajam** ke GHDL dan Nexys A7 (§ 18), dengan daftar
-   komponen board yang harus hidup sebelum board dianggap selesai.
+komponen board yang harus hidup sebelum board dianggap selesai.
 
 ---
 
@@ -109,7 +109,6 @@ Dugaan awal pemetaan kurikulum (wajib dikonfirmasi terhadap modul resmi):
 - Bab 1 sampai 3 dominan memakai Behavioral Simulation.
 - Bab 4 sampai 7 memakai Board Flow, dengan Behavioral Simulation tetap tersedia untuk debug.
 
-
 ## 1.5 Ruang Lingkup Terkunci: VHDL dan Nexys A7
 
 Bagian ini adalah keputusan proyek, bukan saran. Semua bab lain dibaca di bawah aturan ini.
@@ -117,31 +116,32 @@ Bagian ini adalah keputusan proyek, bukan saran. Semua bab lain dibaca di bawah 
 **Yang wajib benar dan diuji:**
 
 1. **VHDL** sebagai bahasa praktikum, dijalankan dengan GHDL (`--std=08`, `-fsynopsys`).
-   Semua contoh, test, dan penerimaan fitur ditulis dalam VHDL.
+Semua contoh, test, dan penerimaan fitur ditulis dalam VHDL.
 2. **Nexys A7** sebagai satu-satunya board. Board profile `nexys-a7`
-   (`src/boards/builtinBoards.json`) adalah satu-satunya yang wajib akurat terhadap master
-   XDC dan board reference manual.
+(`src/boards/builtinBoards.json`) adalah satu-satunya yang wajib akurat terhadap master
+XDC dan board reference manual.
 3. Komponen Nexys A7 yang dipakai praktikum: 16 switch, 16 LED, 5 push button +
-   `CPU_RESETN` (active-low), 8-digit seven segment multiplexed (segment dan digit enable
-   active-low, ada decimal point), clock 100 MHz (`CLK100MHZ`), dan `CLOCK_500Hz` sebagai
-   kemudahan simulator (bukan pin board).
+`CPU_RESETN` (active-low), 8-digit seven segment multiplexed (segment dan digit enable
+active-low, ada decimal point), clock 100 MHz (`CLK100MHZ`), dan `CLOCK_500Hz` sebagai
+kemudahan simulator (bukan pin board).
 
 **Yang dipertahankan tetapi bukan target:**
 
 1. Board lain (`default`, Basys 3, DE10-Lite, DE1-SoC) tetap ada karena fork. Board itu
-   **tidak boleh rusak**, tetapi juga **tidak ditambah, tidak diuji untuk praktikum, dan
-   tidak memblokir rilis**. Perbaikan yang hanya untuk board lain ditolak kecuali
-   perbaikannya juga mengenai jalur bersama.
+**tidak boleh rusak**, tetapi juga **tidak ditambah, tidak diuji untuk praktikum, dan
+tidak memblokir rilis**. Perbaikan yang hanya untuk board lain ditolak kecuali
+perbaikannya juga mengenai jalur bersama.
 2. **Verilog/Icarus** tetap berjalan. Tidak ada fitur baru yang hanya untuk Verilog; bug
-   Verilog diperbaiki bila memperbaiki perilaku bersama, tidak bila membutuhkan
-   pekerjaan khusus Icarus.
+Verilog diperbaiki bila memperbaiki perilaku bersama, tidak bila membutuhkan
+pekerjaan khusus Icarus.
 3. Fitur upstream yang tidak dipakai kurikulum ACSL (misalnya board editor bebas, contoh
-   non-Nexys) dibiarkan apa adanya tanpa investasi.
+non-Nexys) dibiarkan apa adanya tanpa investasi.
 
 **Akibat pada ticket dan review:** ticket yang menyentuh board lain atau menambah
 dukungan Verilog harus menyebut § 1.5 dan alasannya; tanpa itu, review menolaknya.
 
 ---
+
 # 2. Project Foundation
 
 ## 2.1 Upstream Repository (Kandidat)
@@ -211,13 +211,12 @@ Seluruh modul praktikum ACSL ditulis dalam **VHDL** dan dijalankan di **Nexys A7
 (§ 1.5). Konsekuensinya untuk bab ini:
 
 - Setiap contoh, soal, dan test penerimaan ditulis dalam VHDL. Verilog tidak wajib ada,
-  dan tidak ada bab yang penerimaannya bergantung pada Icarus.
+dan tidak ada bab yang penerimaannya bergantung pada Icarus.
 - Setiap contoh memakai nama pin Nexys A7 apa adanya (`CLK100MHZ`, `SW`, `LED`,
-  `BTNC`…`BTND`, `CPU_RESETN`, `CA`…`CG`, `DP`, `AN`) — contoh untuk board lain tidak
-  dipakai sebagai acuan materi.
+`BTNC`…`BTND`, `CPU_RESETN`, `CA`…`CG`, `DP`, `AN`) — contoh untuk board lain tidak
+dipakai sebagai acuan materi.
 - `CLOCK_500Hz` adalah kemudahan simulator, bukan pin board; contoh yang memakainya harus
-  mengatakannya, karena file yang sama di Vivado tidak akan mensintesis clock itu.
-
+mengatakannya, karena file yang sama di Vivado tidak akan mensintesis clock itu.
 
 ## 3.1 Curriculum Mapping
 
@@ -434,12 +433,12 @@ Requirements:
 Board virtual memiliki state yang mengikuti Design Flow:
 
 
-| State         | Kondisi                                          | Perilaku                                                                                                  |
-| ------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `unconnected` | Hardware Manager belum Auto Connect              | Board tampil redup, tidak ada target terdeteksi                                                           |
-| `connected`   | Auto Connect berhasil, belum diprogram           | Board terdeteksi, switch dan LED belum berfungsi (seperti FPGA kosong)                                    |
-| `programmed`  | Program Device sukses                            | Board hidup, simulasi berjalan memakai pin mapping dari I/O Planning                                      |
-| `stale`       | Source atau constraint berubah setelah diprogram | Board tetap menjalankan bitstream lama, UI menandai bahwa desain sudah berubah dan perlu di-program ulang |
+| State         | Kondisi                                                                         | Perilaku                                                                                                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `unconnected` | Hardware Manager belum Auto Connect                                             | Board tampil redup, tidak ada target terdeteksi                                                                                                                                                                    |
+| `connected`   | Auto Connect berhasil, belum diprogram (`powered_unprogrammed`)                  | Board masuk mode *warming-up* / self-test: semua user LED (`LD0`–`LD15`), RGB LED, dan digit 7-segment menyala sebagai indikator board aktif namun belum menerima logika user; switch/button belum memengaruhi HDL |
+| `programmed`  | Program Device sukses                                                           | Mode *warming-up* padam (hanya indikator `POWER` yang menyala default), simulasi VHDL aktif berjalan sesuai pin mapping dari I/O Planning                                                                          |
+| `stale`       | Source atau constraint berubah setelah diprogram                                | Board tetap menjalankan bitstream lama, UI menandai bahwa desain sudah berubah dan perlu di-program ulang                                                                                                          |
 
 
 Frontend tidak boleh menampilkan komponen board sebagai hidup sebelum state `programmed` pada mode Board Flow.
@@ -578,6 +577,9 @@ Teks dialog final mengikuti Vivado versi yang dipakai lab (verifikasi). Teks dan
 
 Requirements:
 
+- I/O standard default pada tabel I/O Planning boleh tetap `LVCMOS18` (mengikuti perilaku default Vivado saat praktikan hanya mengisi kolom `Package Pin` seperti pada `docs/io_ports_bab5.png` dan `docs/io_ports_bab7.png`), dan otomatis dipetakan sebagai `LVCMOS33` pada constraint Nexys A7 tanpa memblokir `Generate Bitstream`.
+- Parser import/export XDC harus mendukung dua format Vivado: format `-dict { PACKAGE_PIN <pin> IOSTANDARD <std> } [get_ports { <port> }]` maupun format baris terpisah `set_property PACKAGE_PIN ...` dan `set_property IOSTANDARD ...` (dengan atau tanpa kurung kurawal `{}` pada nama port skalar seperti `[get_ports c]`).
+- Nilai `IOSTANDARD LVCMOS18` (default GUI Vivado) dan `LVCMOS33` sama-sama diterima sebagai valid pada board Nexys A7.
 - Membaca daftar port top-level (nama, arah, lebar vektor) dari hasil analisis, bukan input manual.
 - Untuk tiap port, praktikan memilih pin dari board profile (4.2), misalnya port `led[0]` dipetakan ke LED0.
 - Mendukung vektor (`std_logic_vector`) per bit.
@@ -1531,18 +1533,16 @@ First complete the audit, the decision record, and the technical specification. 
 
 # 22. Open Questions
 
-Pertanyaan berikut perlu dijawab oleh lab/pemilik proyek. Sampai dijawab, agent harus mencatatnya sebagai asumsi terbuka dan tidak menebak.
-
-1. Varian Nexys A7 yang dipakai lab: A7-50T atau A7-100T?
-2. Versi Vivado yang dipakai praktikum (agar teks menu dan dialog sesuai)?
-3. Apakah praktikum memakai file XDC yang disediakan modul, atau praktikan menulis sendiri?
-4. Bab mana yang memakai Behavioral Simulation (testbench) dan mana yang memakai board? (3.1 baru dugaan)
-5. Metode login: akun lokal, SSO kampus, atau lainnya?
-6. Perkiraan jumlah praktikan bersamaan dan infrastruktur server yang tersedia?
-7. Apakah laporan (utilization/timing) perlu ditampilkan dalam bentuk ilustrasi, atau dihilangkan?
-8. Apakah asisten/dosen perlu melihat hasil praktikan pada rilis pertama?
-9. Apakah bahasa antarmuka cukup bahasa Indonesia?
-10. Apakah GPL pada turunan HDLBoard (jika fork) dapat diterima oleh institusi?
+1. **Varian Nexys A7:** Digilent Nexys A7-100T (`xc7a100tcsg324-1`) sesuai unit fisik di Lab ACSL.
+2. **Versi Vivado:** Vivado 2020.2 (acuan teks menu, Flow Navigator, dan dialog mengacu pada versi ini dan `docs/vivado_ref.png`).
+3. **Penggunaan XDC:** Praktikan melakukan pin assignment secara manual melalui tab **I/O Planning** (memilih pin dari board profile Nexys A7), dengan opsi mengimpor/melihat file `.xdc` hasil mapping tersebut.
+4. **Mode per Bab:** Bab 1–3 dominan **Behavioral Simulation** (serta RTL Analysis/Schematic pada Bab 3 &amp; 7); Bab 4–7 menggunakan **Board Flow** hingga `Program Device` (Bab 4 fokus pada komponen/UART internal tanpa ketergantungan PuTTY eksternal).
+5. **Metode Login:** Akun lokal sederhana untuk MVP (struktur DB disiapkan agar bisa ditambah SSO kampus di fase lanjut).
+6. **Concurrent Users:** Target awal 30–40 praktikan bersamaan (1 sesi shift praktikum) dengan isolasi container/proses per sesi.
+7. **Laporan Utilization/Timing:** Ditampilkan ringkas dengan label eksplisit **"Simulasi Edukatif / Ilustrasi"** tanpa angka palsu yang menyesatkan.
+8. **Akses Asisten/Dosen:** Ditunda ke Phase 9 (setelah MVP praktikan stabil).
+9. **Bahasa Antarmuka:** Bahasa Indonesia untuk dialog, penjelasan langkah, dan pesan error edukatif; istilah teknis Vivado (seperti *Run Synthesis*, *Open Synthesized Design*, *Generate Bitstream*, *Open Hardware Manager*, *Program Device*) tetap memakai istilah asli Vivado.
+10. **Lisensi GPL-2.0:** Fork berlisensi GPL-2.0 dari `rlangoy/HDLBoard` dapat diterima untuk penggunaan dan pengembangan internal Lab ACSL dengan tetap mempertahankan header SPDX dan atribusi upstream.
 
 ---
 

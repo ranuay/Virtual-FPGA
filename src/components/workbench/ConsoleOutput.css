@@ -18,7 +18,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid #1d222b;
   flex: none;
 }
 
@@ -26,16 +26,16 @@
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: #e2e8f0;
+  color: #dee2e6;
 }
 
 .wb-console__clear {
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #334155;
+  border: 1px solid #2f3944;
   background: transparent;
-  color: #cbd5e1;
+  color: #cfd4da;
   font: inherit;
   font-size: 12px;
   padding: 5px 10px;
@@ -44,7 +44,7 @@
 }
 
 .wb-console__clear:hover {
-  background: #1e293b;
+  background: #1d222b;
 }
 
 .wb-console__body {
@@ -58,7 +58,7 @@
 }
 
 .wb-console__line {
-  color: #cbd5e1;
+  color: #cfd4da;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -72,7 +72,7 @@
 }
 
 .wb-console__time {
-  color: #64748b;
+  color: #6c757d;
 }
 
 .wb-console__clear-icon {
@@ -85,15 +85,15 @@
 .wb-console__reports {
   border-collapse: collapse;
   margin: 2px 0 4px;
-  color: #cbd5e1;
+  color: #cfd4da;
 }
 
 .wb-console__reports th {
   padding: 0 18px 2px 0;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid #1d222b;
   font-weight: 600;
   text-align: left;
-  color: #64748b;
+  color: #6c757d;
 }
 
 .wb-console__reports td {
@@ -109,11 +109,11 @@
 }
 
 .wb-console__reports tbody tr:hover {
-  background: #1e293b;
+  background: #1d222b;
 }
 
 .wb-console__report-line {
-  color: #64748b;
+  color: #6c757d;
 }
 
 .wb-console__reports tr.is-warning {

@@ -306,7 +306,7 @@
 }
 
 .wb-github__status.is-not-on-github {
-  background: #f1f5f9;
+  background: #f2f4f6;
   color: var(--wb-text-muted);
 }
 

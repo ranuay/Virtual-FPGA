@@ -63,7 +63,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #94a3b8;
+  background: #a8afb8;
 }
 
 .wb-simcard__status.is-running {
@@ -80,7 +80,7 @@
 }
 
 .wb-simcard__status.is-stopped .wb-simcard__dot {
-  background: #94a3b8;
+  background: #a8afb8;
 }
 
 @keyframes wb-pulse {

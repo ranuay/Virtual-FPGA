@@ -35,7 +35,7 @@
 }
 
 .wb-split__divider:focus-visible {
-  outline: 2px solid var(--wb-focus-ring, #2563eb);
+  outline: 2px solid var(--wb-focus-ring, var(--wb-accent));
   outline-offset: -1px;
 }
 

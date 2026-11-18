@@ -4,9 +4,12 @@
 :root {
   color-scheme: light;
   /* The head colour of the testbench and of a design (RTL), shared by the editor's
-     pane headers and the waveform's sections, so the two read as the same thing. */
-  --hdl-tb-head: #dbe7fb;
-  --hdl-rtl-head: #d5f0dd;
+     pane headers and the waveform's sections, so the two read as the same thing.
+     Both are tints of the lab's palette (fpga.acsl.my.id): the testbench takes
+     the slate-mint of its own ink, the design the site's mint at a pale step.
+     They stay distinct from each other, which is what the pair is for. */
+  --hdl-tb-head: #dfeaf3;
+  --hdl-rtl-head: #d7f5e8;
   font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial,
     sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -16,7 +19,7 @@
 body {
   margin: 0;
   background: #ffffff;
-  color: #0f172a;
+  color: #202942;
 }
 
 /* ---- demo page only; not part of any component -------------------- */
@@ -38,13 +41,13 @@ body {
   margin: 0 0 8px;
   font-size: 15px;
   line-height: 1.6;
-  color: #475569;
+  color: #4a5560;
 }
 
 .demo__section {
   margin-top: 44px;
   padding-top: 28px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #dee2e6;
 }
 
 .demo__h2 {
@@ -53,7 +56,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #64748b;
+  color: #6c757d;
 }
 
 .demo__row {
@@ -94,7 +97,7 @@ body {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #64748b;
+  color: #6c757d;
 }
 
 .demo__note {
@@ -102,7 +105,7 @@ body {
   max-width: 44rem;
   font-size: 14px;
   line-height: 1.6;
-  color: #475569;
+  color: #4a5560;
 }
 
 .demo__row .demo__note {
@@ -115,14 +118,14 @@ body {
   gap: 4px 14px;
   margin: 0;
   padding: 14px 18px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #dee2e6;
   border-radius: 10px;
-  background: #f8fafc;
+  background: #f8f9fa;
   font-size: 15px;
 }
 
 .demo__values dt {
-  color: #64748b;
+  color: #6c757d;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -133,13 +136,13 @@ body {
   margin: 0;
   font-family: 'Cascadia Mono', Consolas, ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  color: #0f172a;
+  color: #202942;
 }
 
 .demo code {
   font-family: 'Cascadia Mono', Consolas, ui-monospace, monospace;
   font-size: 0.92em;
-  background: #f1f5f9;
+  background: #f2f4f6;
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -147,11 +150,11 @@ body {
 .demo kbd {
   font: inherit;
   font-size: 0.88em;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #cfd4da;
   border-bottom-width: 2px;
   border-radius: 4px;
   padding: 1px 5px;
-  background: #f8fafc;
+  background: #f8f9fa;
 }
 
 .demo__hexrow {

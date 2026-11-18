@@ -20,7 +20,7 @@
      included (SplitEditor.css), so the three strips' bottom borders run on as
      one line. */
   --wb-rail-w: 44px;
-  --wb-rail-bg: #f1f5f9;
+  --wb-rail-bg: #f2f4f6;
   /* Role colours (docs/impl_split_screen.md § 4.13): a tint for the badge, an ink
      for its text and icon. Distinct from the diagnostics' red/amber so a role is
      never read as a problem. */
@@ -41,18 +41,37 @@
   /* How long a side pane takes to slide open or shut. */
   --wb-pane-slide: 200ms;
 
-  --wb-border: #e2e8f0;
-  --wb-sidebar-bg: #f8fafc;
-  --wb-hover: #eef2f7;
-  --wb-text: #0f172a;
-  --wb-text-muted: #64748b;
+  /* The chrome's palette follows fpga.acsl.my.id, the laboratory's own site, so
+     the lab and the app it hands out look like the same product: mint #2eca8b
+     for the brand, #202942 for ink, #6c757d for muted text, #f8f9fa for the
+     quiet surfaces, #dee2e6 for borders.
 
-  --wb-accent: #2f6fed;
-  --wb-accent-dark: #1d4ed8;
-  --wb-accent-soft: #e5efff;
+     Two substitutions are deliberate, because the site's raw values do not
+     survive a workbench's denser text. */
+  --wb-border: #dee2e6;
+  --wb-sidebar-bg: #f8f9fa;
+  --wb-hover: #f2f4f6;
+  --wb-text: #202942;
+  /* #6c757d is the site's muted grey but reaches only 4.45:1 on #f8f9fa, under
+     the 4.5:1 this app holds muted text to; #5f6b7a is the same grey a shade
+     deeper and holds 5.15:1 there. */
+  --wb-text-muted: #5f6b7a;
 
-  --wb-header-bg: #3f6fc4;
-  --wb-header-bg-dark: #315999;
+  /* The site's #2eca8b is a fill, not an ink: 2.11:1 on white, unreadable as
+     text and as a button label's background. Every use here is either text on a
+     light surface or a fill under white text, so the accent is the site's own
+     deep green, 5.48:1 both ways. --wb-accent-mint keeps the brand mint for the
+     places that want the colour as decoration rather than as a signal. */
+  --wb-accent: #047857;
+  --wb-accent-dark: #065f46;
+  --wb-accent-soft: #e6f7f0;
+  --wb-accent-mint: #2eca8b;
+
+  /* The header band. The site's navbar is transparent white, but this app's
+     header carries white text on a filled strip, so it takes the deep green
+     gradient the site uses for its own dark blocks. */
+  --wb-header-bg: #0e7255;
+  --wb-header-bg-dark: #065f46;
 
   --wb-success: #16a34a;
   --wb-success-dark: #15803d;
@@ -70,19 +89,19 @@
   --wb-diag-warning-text: #92400e; /* inline message: 6.4:1 on the tint */
   /* Advice (docs/editor_diagnostics_improvement_plan.md § 4.10): a muted
      follow-on error, and the hint on a line another marker points at. */
-  --wb-diag-followon: #64748b; /* gutter number, glyph, edge: 4.5:1 on the gutter */
+  --wb-diag-followon: #6c757d; /* gutter number, glyph, edge: 4.5:1 on the gutter */
   --wb-diag-followon-bg: rgba(148, 163, 184, 0.14);
   --wb-diag-hint: #1d4ed8; /* gutter number and edge: 6.4:1 on the gutter */
   --wb-diag-hint-bg: rgba(59, 130, 246, 0.1);
 
-  --wb-console-bg: #0f172a;
+  --wb-console-bg: #202942;
 
   /* The pane dividers (.wb-resizer): a light gray bar with darker edges,
      5px thick — paneLayout.ts's CHROME_W and usePaneLayout.ts's
      ROW_DIVIDER_H budget for it. */
   --wb-divider-size: 5px;
   --wb-divider-bg: #e5e9f0;
-  --wb-divider-edge: #cbd5e1;
+  --wb-divider-edge: #cfd4da;
   /* How far the invisible grab area reaches past each side of the bar. */
   --wb-divider-reach: 4px;
 

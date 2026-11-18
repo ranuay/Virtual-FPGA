@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Rune Langøy
 
 /**
- * Renders the installer's branding from the two-tone HDLBoard logo (the same
- * chip/pins + "H" split as src/Images/hdlboard_logo.svg, see LOGO_*_PATH):
+ * Renders the installer's branding from the two-tone HDLBoard mark (the
+ * chip/pins + "H" split in LOGO_BODY_PATH/LOGO_H_PATH below):
  *
  *   electron/build/icon.ico            app + installer icon, 7 sizes
  *   electron/build/icon.png            Linux AppImage icon, 512x512
@@ -12,10 +12,13 @@
  * Run with Electron, not Node:
  *   winInstaller/electron/node_modules/.bin/electron winInstaller/make-assets.cjs
  *
- * Electron is already a build dependency here and is a full Chromium, so
- * it rasterises the SVG with no extra toolchain and no browser download —
- * and with the same renderer the app itself uses, so the branding cannot
- * drift from the logo HDLBoard shows in its header.
+ * This still draws the upstream HDLBoard mark; the web app's own header shows
+ * the ACSL emblem instead (`src/Images/acsl_logo.png`, see `logo.tsx`). Those
+ * two disagree until the committed `build/icon.ico` and
+ * `build/installerSidebar.bmp` are regenerated from the ACSL emblem: the
+ * emblem exists only as a raster, so it has to be loaded as an image here
+ * rather than traced into path data, and this script needs Electron present
+ * to run at all.
  *
  * Both containers are written by hand because both are trivial, and the
  * alternative is an image-conversion dependency for two files:

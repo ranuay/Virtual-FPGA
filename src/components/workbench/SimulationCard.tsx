@@ -18,6 +18,11 @@ export interface SimulationCardProps {
   simTime?: { readonly simMs: number; readonly wallMs: number };
   /** The top-level entity file this run is elaborating. */
   topFile: string;
+  /**
+   * Why Start is locked, or undefined when it may run (PRD.md § 7.5, Nexys A7 only).
+   * Never locks Stop: a run in progress is always stoppable.
+   */
+  startBlocked?: string;
   onStart: () => void;
   onStop: () => void;
 }
@@ -41,10 +46,12 @@ function formatElapsed(totalSeconds: number): string {
  * run status, integrated into the sidebar rather than floating over the
  * board (matches the reference Simulate-and-Files-pane mockup).
  */
-export function SimulationCard({ status, elapsedSeconds, simTime, topFile, onStart, onStop }: SimulationCardProps) {
+export function SimulationCard({ status, elapsedSeconds, simTime, topFile, startBlocked, onStart, onStop }: SimulationCardProps) {
   const running = status === 'running';
   const compiling = status === 'compiling';
   const speed = simTime === undefined ? undefined : simulationReadout(simTime.simMs, simTime.wallMs);
+  // Stop always works: a locked Start must never trap a run that is going.
+  const blocked = !running && startBlocked !== undefined;
 
   return (
     <section className="wb-simcard">
@@ -61,7 +68,8 @@ export function SimulationCard({ status, elapsedSeconds, simTime, topFile, onSta
         type="button"
         className={cx('wb-simcard__button', running ? 'is-stop' : 'is-start')}
         onClick={running ? onStop : onStart}
-        disabled={compiling}
+        disabled={compiling || blocked}
+        title={blocked ? startBlocked : undefined}
       >
         <span className={cx('wb-icon', running ? 'wb-icon--pause' : 'wb-icon--play')} aria-hidden="true" />
         {running ? 'Stop' : 'Start'}

@@ -1597,9 +1597,23 @@ export function Workbench() {
     checkAndRun(id, route.runTarget, route.unitName, route.pane);
   };
 
+  /**
+   * § 7.5 on the Nexys A7: the board flow is Program Device's, so Start waits for it.
+   * Other boards keep the upstream Start — they are not on the ACSL path (§ 1.5) and
+   * must not be broken by a rule written for the Nexys.
+   */
+  const startBlocked =
+    activeBoard.id !== 'nexys-a7' || flow?.board === 'programmed'
+      ? undefined
+      : flow === null
+        ? 'Run Program Device in the Flow Navigator first. Start runs a design that is programmed onto the board.'
+        : 'Program Device has not completed. Run the flow through Program Device, then Start.';
+
   // The Start button runs the file named as "Top:" — show it (Files panel
-  // highlight and pane header), so what runs is what shows.
+  // highlight and pane header), so what runs is what shows. The lock is repeated
+  // here, not only on the buttons, so no other caller can start a run around it.
   const handleStart = () => {
+    if (startBlocked !== undefined) return;
     if (topFileId === null) startRun(null);
     else runFile(topFileId);
   };
@@ -2038,7 +2052,7 @@ export function Workbench() {
             icon={<PanelToggleIcon side="left" open aria-hidden="true" />}
           />
           <ActivityBarSeparator />
-          <ActivityBarRun status={status} topFile={topFileName} onStart={handleStart} onStop={handleStop} />
+          <ActivityBarRun status={status} topFile={topFileName} startBlocked={startBlocked} onStart={handleStart} onStop={handleStop} />
         </ActivityBar>
 
         <div className="wb-body" ref={layout.bodyRef}>
@@ -2058,6 +2072,7 @@ export function Workbench() {
               elapsedSeconds={elapsedSeconds}
               simTime={simTime}
               topFile={topFileName}
+              startBlocked={startBlocked}
               onStart={handleStart}
               onStop={handleStop}
             />

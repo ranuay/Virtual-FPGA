@@ -58,6 +58,19 @@
   color: #92400e;
   background: #fef3c7;
 }
+/* Vivado's Flow Navigator groups its steps under small uppercase headings (docs/vivado_ref.png). */
+.wb-flow__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wb-flow__group-title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--wb-text-muted);
+}
 .wb-flow__steps {
   margin: 0;
   padding: 0;
@@ -192,6 +205,30 @@
 .wb-flow__ports-note {
   font-size: 11.5px;
   font-weight: 600;
+  color: #92400e;
+}
+
+/* § 7.6's import: the label sits in the title row, and the file input it wraps stays hidden. */
+.wb-flow__ports-import {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--wb-text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.wb-flow__ports-import input {
+  display: none;
+}
+.wb-flow__ports-report {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  color: var(--wb-text-muted);
+}
+.wb-flow__ports-problem {
   color: #92400e;
 }
 .wb-flow__ports table {

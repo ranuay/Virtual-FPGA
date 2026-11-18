@@ -11,17 +11,20 @@ import { ChipIcon, PlayIcon } from './icons';
 import content from './designFlowContent.json';
 import {
   BOARD_STAGE_TEXT,
-  FLOW_STEPS,
   STATUS_TEXT,
   STEP_LABEL,
   unmetPrerequisites,
   canRun,
+  stepGroups,
   type FlowStep,
   type FlowStepRow,
   type FlowWire,
   type FlowWirePort,
 } from './designFlow';
 import './DesignFlowPanel.css';
+
+/** The Flow Navigator's sections, computed once: the step list is static. */
+const GROUPS = stepGroups();
 
 const EXPLANATION: Readonly<Record<FlowStep, { vivado: string; why: string; here: string }>> = content;
 
@@ -58,22 +61,27 @@ export function DesignFlowPanel({ flow, busy, pins, onRun, onPin }: DesignFlowPa
     <section className="wb-flow">
       <div className="wb-flow__header">
         <ChipIcon aria-hidden="true" />
-        <h2 className="wb-flow__title">Design Flow</h2>
+        <h2 className="wb-flow__title">Flow Navigator</h2>
         {flow !== null && <span className={cx('wb-flow__board', `is-${flow.board}`)}>{BOARD_STAGE_TEXT[flow.board]}</span>}
       </div>
-      <ol className="wb-flow__steps">
-        {FLOW_STEPS.map((step) => (
-          <FlowStepItem
-            key={step}
-            step={step}
-            entry={flow?.steps.find((candidate) => candidate.step === step) ?? { step, status: 'not_run', educational: false }}
-            open={explained === step}
-            disabled={busy || (flow === null ? step === 'program' : !canRun(flow, step))}
-            onToggle={() => setExplained(explained === step ? null : step)}
-            onRun={() => request(step)}
-          />
-        ))}
-      </ol>
+      {GROUPS.map(({ group, steps }) => (
+        <section className="wb-flow__group" key={group}>
+          <h3 className="wb-flow__group-title">{group}</h3>
+          <ol className="wb-flow__steps">
+            {steps.map((step) => (
+              <FlowStepItem
+                key={step}
+                step={step}
+                entry={flow?.steps.find((candidate) => candidate.step === step) ?? { step, status: 'not_run', educational: false }}
+                open={explained === step}
+                disabled={busy || (flow === null ? step === 'program' : !canRun(flow, step))}
+                onToggle={() => setExplained(explained === step ? null : step)}
+                onRun={() => request(step)}
+              />
+            ))}
+          </ol>
+        </section>
+      ))}
       {flow !== null && flow.ports.length > 0 && <PortTable flow={flow} pins={pins} busy={busy} onPin={onPin} />}
       {jump !== null && <JumpDialog step={jump.step} missing={jump.missing} onRun={onRun} onClose={() => setJump(null)} />}
     </section>

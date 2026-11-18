@@ -26,6 +26,32 @@ export const STEP_LABEL: Readonly<Record<FlowStep, string>> = {
   program: 'Program Device',
 };
 
+/**
+ * Vivado 2020.2's Flow Navigator headings (docs/vivado_ref.png), the ones a step here
+ * belongs under. `RTL ANALYSIS` is absent on purpose: its only entry is Open Elaborated
+ * Design → Schematic, which is T7 and has no step yet. A group with no steps is not drawn.
+ */
+export type FlowGroup = 'SYNTHESIS' | 'IMPLEMENTATION' | 'PROGRAM AND DEBUG';
+
+/** Vivado's own grouping, which differs from ours: Get Bitstream sits under PROGRAM AND DEBUG there. */
+export const STEP_GROUP: Readonly<Record<FlowStep, FlowGroup>> = {
+  synthesis: 'SYNTHESIS',
+  ioPlanning: 'SYNTHESIS',
+  implement: 'IMPLEMENTATION',
+  bitstream: 'PROGRAM AND DEBUG',
+  hardware: 'PROGRAM AND DEBUG',
+  connect: 'PROGRAM AND DEBUG',
+  program: 'PROGRAM AND DEBUG',
+};
+
+/** The groups the panel draws, in Flow Navigator order, each with its steps in flow order. */
+export function stepGroups(): readonly { readonly group: FlowGroup; readonly steps: readonly FlowStep[] }[] {
+  const order: readonly FlowGroup[] = ['SYNTHESIS', 'IMPLEMENTATION', 'PROGRAM AND DEBUG'];
+  return order
+    .map((group) => ({ group, steps: FLOW_STEPS.filter((step) => STEP_GROUP[step] === group) }))
+    .filter((entry) => entry.steps.length > 0);
+}
+
 /** PRD.md § 7.3. */
 export type StepStatus = 'not_run' | 'running' | 'done' | 'failed' | 'outdated';
 

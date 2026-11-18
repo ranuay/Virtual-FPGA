@@ -160,4 +160,14 @@ describe('DesignFlowPanel', () => {
   it('names the board stage, so a stale board is visible without reading the log', () => {
     expect(render(flowOf({}, { board: 'stale' }))).toContain('is-stale');
   });
+
+  it('groups the steps under Vivado’s Flow Navigator headings, in Vivado’s order', () => {
+    const html = render(undefined);
+    const headings = [...html.matchAll(/wb-flow__group-title">([^<]+)</g)].map((match) => match[1]);
+    expect(headings).toEqual(['SYNTHESIS', 'IMPLEMENTATION', 'PROGRAM AND DEBUG']);
+    // Get Bitstream belongs under PROGRAM AND DEBUG in Vivado, not under IMPLEMENTATION.
+    const implementation = html.slice(html.indexOf('IMPLEMENTATION'), html.indexOf('PROGRAM AND DEBUG'));
+    expect(implementation).toContain('Run Implementation');
+    expect(implementation).not.toContain('Generate Bitstream');
+  });
 });

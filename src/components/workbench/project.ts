@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Copyright (C) 2026 Rune Langøy
 
-/** The product name, as it appears in the title bar and every dialog. */
-export const APP_NAME = 'HDLBoard';
+/** The product name, as it appears in the title bar and every dialog (PRD.md's title for the lab). */
+export const APP_NAME = 'ACSL Virtual FPGA Lab';
 
 /** The one-liner that follows the name — title bar, README, installer. */
-export const APP_TAGLINE = 'Write VHDL or Verilog and watch it run';
+export const APP_TAGLINE = 'VHDL on a virtual Nexys A7, from RTL to a programmed board';
 
 /** The project's GitHub repository, `owner/name`: its page and its API address (latestRelease.ts) both follow it. */
 export const REPO_PATH = 'rlangoy/HDLBoard';

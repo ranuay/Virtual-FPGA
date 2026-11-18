@@ -74,6 +74,8 @@ export interface ActivityBarRunProps {
   status: SimStatus;
   /** The top file a Start would run, for the tooltip. */
   topFile: string;
+  /** Why Start is locked, or undefined when it may run (PRD.md § 7.5, Nexys A7 only). */
+  startBlocked?: string;
   onStart: () => void;
   onStop: () => void;
 }
@@ -89,16 +91,18 @@ const RUN_TITLE: Record<SimStatus, (topFile: string) => string> = {
  * or stopped with the Explorer shut. A dot on its corner carries the status:
  * amber while compiling, green while running.
  */
-export function ActivityBarRun({ status, topFile, onStart, onStop }: ActivityBarRunProps) {
+export function ActivityBarRun({ status, topFile, startBlocked, onStart, onStop }: ActivityBarRunProps) {
   const running = status === 'running';
-  const title = RUN_TITLE[status](topFile);
+  // Stop always works: a locked Start must never trap a run that is going.
+  const blocked = !running && startBlocked !== undefined;
+  const title = blocked ? startBlocked : RUN_TITLE[status](topFile);
   return (
     <button
       type="button"
       className={cx('wb-activitybar__item', 'wb-activitybar__run', `is-${status}`)}
       aria-label={title}
       title={title}
-      disabled={status === 'compiling'}
+      disabled={status === 'compiling' || blocked}
       onClick={running ? onStop : onStart}
     >
       {running ? <StopIcon aria-hidden="true" /> : <PlayIcon aria-hidden="true" />}

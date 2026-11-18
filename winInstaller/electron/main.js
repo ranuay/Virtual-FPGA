@@ -723,7 +723,7 @@ app.whenReady().then(async () => {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#1e1e1e',
-    title: 'HDLBoard — Write VHDL or Verilog and watch it run',
+    title: 'ACSL Virtual FPGA Lab — VHDL on a virtual Nexys A7',
     show: false,
     webPreferences: {
       // The renderer is a plain web app talking over a WebSocket; it has

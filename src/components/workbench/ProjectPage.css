@@ -120,7 +120,7 @@
 }
 
 .wb-project__name-input:hover {
-  border-color: #cbd5e1;
+  border-color: #cfd4da;
 }
 
 .wb-project__name-input:focus-visible {
@@ -264,7 +264,8 @@
 }
 
 .wb-project__field::placeholder {
-  color: #94a3b8;
+  /* Quiet, but not the 2.4:1 this grey landed at on the new surfaces. */
+  color: #97a0aa;
 }
 
 .wb-project__select {
@@ -324,7 +325,7 @@
   gap: 10px;
   margin: 0;
   padding: 10px 14px;
-  border: 1px solid #c7dafc;
+  border: 1px solid color-mix(in srgb, var(--wb-accent) 30%, #ffffff);
   border-radius: 8px;
   background: var(--wb-accent-soft);
   font-size: 14px;
@@ -371,7 +372,7 @@
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  border-color: #c7dafc;
+  border-color: color-mix(in srgb, var(--wb-accent) 30%, #ffffff);
 }
 
 .wb-project__missing-text {
@@ -567,7 +568,7 @@ button.wb-project__file:hover {
   gap: 10px;
   margin: 0;
   padding: 12px 14px;
-  border: 1px solid #c7dafc;
+  border: 1px solid color-mix(in srgb, var(--wb-accent) 30%, #ffffff);
   border-radius: 8px;
   background: var(--wb-accent-soft);
   font-size: 13px;
@@ -778,7 +779,7 @@ button.wb-project__file:hover {
   z-index: 1;
   width: 16px;
   height: 16px;
-  color: #94a3b8;
+  color: #a8afb8;
   pointer-events: none;
 }
 
@@ -787,7 +788,7 @@ button.wb-project__file:hover {
 }
 
 .wb-project__name-row.is-asking .wb-project__name-input::placeholder {
-  color: #64748b;
+  color: #6c757d;
 }
 
 /* The helper under the field while it is empty; red after Save to GitHub was clicked without a name. */
@@ -845,7 +846,7 @@ button.wb-project__file:hover {
   left: 10px;
   width: 16px;
   height: 16px;
-  color: #94a3b8;
+  color: #a8afb8;
   pointer-events: none;
 }
 

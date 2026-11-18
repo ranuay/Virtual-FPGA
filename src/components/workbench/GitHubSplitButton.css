@@ -92,7 +92,7 @@
   z-index: 15;
   padding: 6px 10px;
   border-radius: 6px;
-  background: #0f172a;
+  background: #202942;
   color: #ffffff;
   font-size: 12px;
   font-weight: 400;
@@ -109,7 +109,7 @@
   bottom: 100%;
   right: 12px;
   border: 5px solid transparent;
-  border-bottom-color: #0f172a;
+  border-bottom-color: #202942;
 }
 
 .wb-gh-split:hover .wb-gh-split__tip,

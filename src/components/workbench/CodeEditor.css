@@ -113,7 +113,7 @@
   line-height: var(--wb-code-line-h);
   font-family: var(--wb-code-font);
   font-size: var(--wb-code-size);
-  color: #94a3b8;
+  color: #97a0aa;
 }
 
 .wb-editor__surface {
@@ -137,7 +137,7 @@
 }
 
 .wb-editor__highlight {
-  color: #1e293b;
+  color: #1d222b;
   pointer-events: none;
   /* Scrolled programmatically to track the textarea (CodeEditor's
      onScroll) — hidden, not auto, so it never grows a second,
@@ -358,7 +358,7 @@
   resize: none;
   background: transparent;
   color: transparent;
-  caret-color: #0f172a;
+  caret-color: #202942;
 }
 
 /* The editor is the obvious focus target already; the browser's focus ring
@@ -475,7 +475,7 @@
 }
 
 .wb-tok-punct {
-  color: #475569;
+  color: #4a5560;
 }
 
 /* Verilog only: `timescale / `define / a macro use, and $display-style system tasks. */

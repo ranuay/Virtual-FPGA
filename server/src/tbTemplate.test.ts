@@ -101,4 +101,50 @@ describe('generateTestbench on boards of other shapes (docs/board_io_v2_spec.md 
     assert.match(text, /seg8\(7\) => dp_sig\n/);
     assert.doesNotMatch(text, /seg8 => /);
   });
+
+  // A handout's `.xdc` pins bits one by one (`led_seg[7]` on `DP`), which I/O Planning turns
+  // into a comma-separated list. The board-order run of the same bits must not attach them a
+  // second time: VHDL reads a repeated association for one formal as an out-of-range choice
+  // (`led_seg(8) => dp_sig`, `choice is out of index range`) and the board never starts.
+  test('wires a port pinned to bits once, in the pin order, with no duplicate association', () => {
+    const pins = new Map([['led_seg', 'ca,cb,cc,cd,ce,cf,cg,dp'], ['pos_seg', 'an[0],an[1],an[2]']]);
+    const text = generateTestbench('top', new Set(['led_seg', 'pos_seg']), NEXYS_A7_BOARD_IO, { pins });
+    const assoc = (name: string): string[] =>
+      text
+        .split('\n')
+        .filter((line) => line.trim().startsWith(`${name}(`))
+        .map((line) => line.trim().replace(/[,\s]+$/, ''));
+    assert.deepEqual(assoc('led_seg'), [
+      'led_seg(0) => seg_sig(0)',
+      'led_seg(1) => seg_sig(1)',
+      'led_seg(2) => seg_sig(2)',
+      'led_seg(3) => seg_sig(3)',
+      'led_seg(4) => seg_sig(4)',
+      'led_seg(5) => seg_sig(5)',
+      'led_seg(6) => seg_sig(6)',
+      'led_seg(7) => dp_sig',
+    ]);
+    assert.deepEqual(assoc('pos_seg'), ['pos_seg(0) => an_sig(0)', 'pos_seg(1) => an_sig(1)', 'pos_seg(2) => an_sig(2)']);
+  });
+
+  // A handout may declare `a : in bit` (Bab 1 behavioral). IEEE 1164 has no conversion
+  // between `bit` and `std_logic` for a port map, so the testbench gives each such port a
+  // `bit` signal and converts on the board side of it - in the port's own direction.
+  test('bridges a port declared bit through a bit signal, converting on the board side', () => {
+    const text = generateTestbench('behavioral', new Set(['a', 'b', 's']), NEXYS_A7_BOARD_IO, {
+      pins: new Map([
+        ['a', 'sw[0]'],
+        ['b', 'sw[1]'],
+        ['s', 'led[0]'],
+      ]),
+      bitPorts: new Set(['a', 'b', 's']),
+    });
+    assert.match(text, /signal a_bit_sig : bit;/);
+    assert.match(text, /signal s_bit_sig : bit;/);
+    assert.match(text, /a => a_bit_sig/);
+    assert.match(text, /s => s_bit_sig/);
+    // An input converts board -> bit; an output converts bit -> board.
+    assert.match(text, /a_bit_sig <= '1' when sw_sig\(0\) = '1' else '0';/);
+    assert.match(text, /ledr_sig\(0\) <= '1' when s_bit_sig = '1' else '0';/);
+  });
 });

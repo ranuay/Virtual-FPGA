@@ -62,6 +62,12 @@ export interface RunPlan {
    * engine could read them; the flow panel lists them and nothing else.
    */
   readonly ports?: readonly DesignPort[];
+  /**
+   * The student's board entity, as the design spells it. A board run elaborates it inside
+   * the generated testbench, so this is the only record of what to re-elaborate when the
+   * run has to be recovered from a hardware-only failure (`SimEngine.recoverBoardRun`).
+   */
+  readonly boardTop?: string;
 }
 
 /** One port of the student's top, as I/O Planning lists it (PRD.md § 7.2). */
@@ -127,6 +133,16 @@ export interface SimEngine {
   prepare(request: PrepareRequest): Promise<PrepareResult>;
   startBoardRun(plan: RunPlan, files: BoardFiles): RunHandle;
   startBatchRun(plan: RunPlan, run: BatchRunOptions): BatchHandle;
+  /**
+   * Recovers a board run that stopped on something a real chip does not have: GHDL's
+   * `bound check failure`. Hardware wraps a counter that overflows its subtype instead of
+   * aborting, so the run is rebuilt from the synthesised netlist — the hardware the design
+   * actually becomes — and the same testbench elaborates against it. `false` when the
+   * failure is not that, or the netlist does not build: the session then reports the
+   * original error. Re-running is the only recovery; the design's source is not edited
+   * (`PRD.md` § 20 Rule 5).
+   */
+  recoverBoardRun?(plan: RunPlan, stderr: string): Promise<boolean>;
 }
 
 /** How one start of a batch run is wired. */

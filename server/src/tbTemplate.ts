@@ -22,7 +22,7 @@
  * chosen to be the electrically "off" value for that signal, so an
  * unconnected output reads as blank rather than undefined (Appendix B).
  */
-import { LEGACY_RESET_PORT, type BoardIo } from './engines/boardPorts.js';
+import { LEGACY_RESET_PORT, type BoardBinding, type BoardDirection, type BoardIo } from './engines/boardPorts.js';
 import { stateLength, stimLength } from './engines/boardShape.js';
 import { connectPorts, portWires, type ConnectPort, type PinMap, type PortWire } from './engines/ioPins.js';
 
@@ -53,11 +53,16 @@ export interface TiedInput {
  * ignores case, so this connects whatever spelling the entity used — and after a pin, the
  * port it names is the one the student chose (§ 7.6), not the one its name matched.
  */
-function buildPortMap(connected: readonly ConnectPort[], linked: ReadonlySet<string>, tied: readonly TiedInput[]): string {
+function buildPortMap(
+  connected: readonly ConnectPort[],
+  linked: ReadonlySet<string>,
+  tied: readonly TiedInput[],
+  bridged: ReadonlyMap<string, string>,
+): string {
   // The legacy rst is wired whether or not the board has a button for it (§ 7.2).
   const legacy: Array<[string, string]> = linked.has(LEGACY_RESET_PORT) ? [[LEGACY_RESET_PORT, RESET_SIGNAL]] : [];
   const assocs = portWires(connected)
-    .flatMap(wireAssocs)
+    .flatMap((wire) => wireAssocs(wire, bridged))
     .concat(legacy)
     .concat(tied.map(({ name, value }) => [name, value] as [string, string]))
     .map(([formal, actual]) => `${formal} => ${actual}`);
@@ -71,12 +76,52 @@ function buildPortMap(connected: readonly ConnectPort[], linked: ReadonlySet<str
  * the actual of an `out` port, so the word cannot be `key => dp_sig & seg_sig(6) & …`;
  * naming the bits is legal in both directions and needs no signal of its own.
  */
-function wireAssocs({ key, bits }: PortWire): Array<[string, string]> {
-  if (bits.length === 1) return [[key, vhdlActual(bits[0])]];
-  return bits.map((bit, index): [string, string] => [`${key}(${index})`, vhdlActual(bit)]);
+function wireAssocs({ key, bits }: PortWire, bridged: ReadonlyMap<string, string>): Array<[string, string]> {
+  const actual = (bit: BoardBinding): string => bridged.get(vhdlActual(bit)) ?? vhdlActual(bit);
+  if (bits.length === 1) return [[key, actual(bits[0])]];
+  return bits.map((bit, index): [string, string] => [`${key}(${index})`, actual(bit)]);
+}
+
+/**
+ * A design port declared `bit` (the Bab 1 behavioral handout writes `a : in bit`). IEEE
+ * 1164 defines no conversion between `bit` and `std_logic` for a port map, and an
+ * expression is not a legal actual for an `out` port, so the testbench gives each such
+ * port a `bit` signal of its own and converts on the board side of it.
+ */
+interface BitBridge {
+  /** The `bit` signal the port map associates with the design port. */
+  readonly signal: string;
+  /** The board signal the bridge converts to and from: `sw_sig(0)`. */
+  readonly actual: string;
+  readonly direction: BoardDirection;
+}
+
+function bitBridges(connected: readonly ConnectPort[], bitPorts: ReadonlySet<string>): BitBridge[] {
+  return portWires(connected)
+    .filter((wire) => bitPorts.has(wire.name.toLowerCase()))
+    .map((wire) => ({ signal: `${wire.name.toLowerCase()}_bit_sig`, actual: vhdlActual(wire.bits[0]), direction: wire.bits[0].direction }));
+}
+
+/** The `bit` signal each bridge needs; empty when no design port is declared `bit`. */
+function bitBridgeDeclarations(bridges: readonly BitBridge[]): string {
+  return bridges.map(({ signal }) => `\n  signal ${signal} : bit;`).join('');
+}
+
+/** Each bridge's conversion on the board side; empty when there are none. */
+function bitBridgeWiring(bridges: readonly BitBridge[]): string {
+  return bridges
+    .map(({ signal, actual, direction }) =>
+      direction === 'in' ? `\n  ${signal} <= '1' when ${actual} = '1' else '0';` : `\n  ${actual} <= '1' when ${signal} = '1' else '0';`,
+    )
+    .join('');
 }
 
 export interface TestbenchOptions {
+  /**
+   * Design ports declared `bit` rather than `std_logic`, lower case. Omitted, no port is
+   * bridged and the generated text is byte-for-byte what it was.
+   */
+  bitPorts?: ReadonlySet<string>;
   /**
    * Take the pacing grants from the process's standard input instead of a
    * FIFO named by `pacing_file` — the Windows path, where there is no
@@ -117,9 +162,9 @@ export function generateTestbench(
   options: TestbenchOptions = {},
 ): string {
   // The wires, after any pin (§ 7.6): a pinned port connects to the board port the
-  // student chose, and the one its name matched is left for the port that took it.
   const connected = connectPorts([...ports].map((name) => ({ name })), board, options.pins ?? new Map()).connected;
-  const portMap = buildPortMap(connected, ports, options.tiedInputs ?? []);
+  const bridges = bitBridges(connected, options.bitPorts ?? new Set());
+  const portMap = buildPortMap(connected, ports, options.tiedInputs ?? [], new Map(bridges.map((bridge) => [bridge.actual, bridge.signal])));
   const rstDrive = legacyResetDrive(ports, board);
   const hasBoardClock = connected.some(({ binding }) => binding.role === 'clock');
   const halfPeriod = clockHalfPeriod(board);
@@ -158,7 +203,7 @@ architecture sim of ${TB_ENTITY} is
   -- the entity actually declares — buildPortMap() above only connects the
   -- ones that exist. Defaults are each signal's electrically "off" value,
   -- so an unassociated output reads as blank on the wire, not undefined.
-${signalDeclarations(board)}
+${signalDeclarations(board, connected.some(({ binding }) => binding.role === 'digitEnables'))}${bitBridgeDeclarations(bridges)}
 
   function sl2c(v : std_logic) return character is
   begin
@@ -183,7 +228,7 @@ ${signalDeclarations(board)}
 begin
 
   uut: entity work.${entityName}${portMap};
-${rstDrive}${decoderProcess(board)}
+${rstDrive}${decoderProcess(board)}${bitBridgeWiring(bridges)}
 ${
   hasBoardClock
     ? `

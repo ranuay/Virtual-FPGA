@@ -351,6 +351,24 @@ describe('the design flow in a session', () => {
       assert.match(logged(frames), /seg8 -> CA…DP/);
     });
   });
+
+  test('a board port pinned on its own keeps its own name, not the segment word it is in', async () => {
+    // `bcd7Seg` drives `CA`…`CG` as seven 1-bit ports. I/O Planning used to label each of
+    // them with the whole display word, so the table read `CA -> CA…DP` seven times.
+    const ports: RunPlan['ports'] = ['CA', 'CB', 'CC', 'CD', 'CE', 'CF', 'CG'].map((name) => ({ name, direction: 'out' as const, width: 1 }));
+    const { engine } = preparingEngine(ports);
+    await withFlow(engine, async (session, frames) => {
+      session.handleBoard(decodeBoardBody(BOARD_FRAMES['nexys-a7'] ?? ''));
+      await session.handleRun(FILES, 'top.vhdl');
+      await session.handleFlowRun('synthesis');
+      await session.handleFlowRun('ioPlanning');
+      const rows = lastFlow(frames).ports;
+      for (const name of ['CA', 'CB', 'CC', 'CD', 'CE', 'CF', 'CG']) {
+        assert.equal(rows.find((port) => port.name === name)?.constraint, name);
+      }
+      assert.match(logged(frames), /CA -> CA,/);
+    });
+  });
 });
 /** A board whose port names differ from the Default board's, so the match cannot be a coincidence. */
 const boardWithLeds = {

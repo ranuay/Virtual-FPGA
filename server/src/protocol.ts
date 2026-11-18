@@ -86,6 +86,11 @@ export type ServerFrame =
   | { verb: 'LOG'; text: string }
   | { verb: 'ERROR'; stage: ErrorStage; text: string }
   | { verb: 'DONE'; reason: DoneReason }
+  // How far the simulation has run, for PRD.md § 10.3's simulated-time readout:
+  // `simMs` is simulated time, `wallMs` the real time since the run started, so
+  // the ratio between them is this machine's speed. Sent with every poll that
+  // changes `simMs`.
+  | { verb: 'TIME'; simMs: number; wallMs: number }
   // A run wrote a waveform; sent before its DONE/ERROR (§ 7.4). `bytes`: its size on disk.
   | { verb: 'WAVE-READY'; run: number; format: WaveFormat; bytes: number; status: WaveStatus }
   // The waveform follows as gzip in binary frames; `bytes` is its uncompressed size, for progress.
@@ -333,6 +338,17 @@ export function decodeServerFrame(text: string): ServerFrame | ProtocolError {
         };
       }
       return { verb: 'STATE', bits: inline };
+    case 'TIME': {
+      const [simText = '', wallText = '', ...extra] = inline.split(' ');
+      // `Number('')` is 0, so an absent half must be checked before the coercion or
+      // `TIME` alone decodes as a run that simulated nothing in no time.
+      const simMs = simText === '' ? Number.NaN : Number(simText);
+      const wallMs = wallText === '' ? Number.NaN : Number(wallText);
+      if (extra.length > 0 || !Number.isFinite(simMs) || !Number.isFinite(wallMs) || simMs < 0 || wallMs < 0) {
+        return { message: `TIME needs two non-negative numbers (simulated ms, real ms), got: ${JSON.stringify(inline)}` };
+      }
+      return { verb: 'TIME', simMs, wallMs };
+    }
     case 'LOG':
       return { verb: 'LOG', text: body };
     case 'ERROR': {
@@ -379,6 +395,8 @@ export function encodeServerFrame(frame: ServerFrame): string {
       return 'READY';
     case 'STATE':
       return `STATE ${frame.bits}`;
+    case 'TIME':
+      return `TIME ${frame.simMs} ${frame.wallMs}`;
     case 'LOG':
       return `LOG\n${frame.text}`;
     case 'ERROR':

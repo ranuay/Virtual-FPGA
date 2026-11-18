@@ -49,7 +49,7 @@ import { selectEngine } from './engines/selectEngine.js';
 import { firstUnsafeName } from './engines/sourceNames.js';
 
 import { DEFAULT_BOARD_IO, type BoardIo } from './engines/boardPorts.js';
-import { connectPorts, pinTargets } from './engines/ioPins.js';
+import { connectPorts, pinTargets, portWires, resolvePin } from './engines/ioPins.js';
 import { describeStimFields, sameStimMeaning, stateLength, stimLength } from './engines/boardShape.js';
 import type { DecodedBoard } from './boardFrame.js';
 import { type ErrorStage, type ServerFrame, type StimStep, type VhdlFileInput, type WaveFormat, type WaveStatus } from './protocol.js';
@@ -148,6 +148,8 @@ const CONTENDED_RENAME_CODES: readonly string[] = ['EPERM', 'EACCES', 'EBUSY'];
 const BATCH_TIMEOUT_MS = 60_000;
 /** A simulator that died without a word on stderr still owes the student a reason. */
 const UNEXPLAINED_EXIT_TEXT = 'Simulation exited unexpectedly.';
+/** How much of a run's stdout is kept to explain its death: a crash names its own line. */
+const STDOUT_TAIL_CHARS = 4096;
 
 /** True once `from` has replaced `to`; false when the destination is held open by another process. */
 function renamed(from: string, to: string): boolean {
@@ -217,6 +219,8 @@ export class Session {
   private pacingTimer: NodeJS.Timeout | null = null;
   private pacingFd: number | null = null;
   private runStartTime = 0;
+  /** The last `simMs` a `TIME` frame carried, so an idle tick sends nothing (§ 10.3). */
+  private lastSentSimMs = -1;
   /**
    * Bumped per run so `heartbeatPath()` is unique to it. Deleting a shared
    * heartbeat file instead would be a race, not a fix: `RESET` kills the
@@ -245,6 +249,16 @@ export class Session {
    * await is how the older one knows it no longer owns the session.
    */
   private runRequest = 0;
+
+  /** A board run recovers from a range check once; a netlist that fails again is reported. */
+  private recoveredBoardRun = false;
+  /**
+   * The end of the running simulation's own stdout. GHDL reports a runtime failure
+   * (`bound check failure at …`) there rather than on stderr, so a crash with an empty
+   * stderr is only explicable from this — both to decide a recovery and to tell the
+   * student what happened instead of "exited unexpectedly".
+   */
+  private runOutputTail = '';
   private readonly chooseEngine: (topFile: string | undefined) => SimEngine;
   /** Whether the client asked for waveforms (`WAVE on`); off for a client that never says. */
   private waveRequested = false;
@@ -523,9 +537,23 @@ export class Session {
   /** Writes the constraint table from the current wiring; the rows it wrote, for the log. */
   private writeConstraints(board: BoardIo): readonly string[] {
     const { connected } = connectPorts(this.flowPorts, board, this.pins);
-    // A pin on the display's segment word constrains the port to that word, not to one bit of it.
-    const labels = new Map(pinTargets(board).flatMap((choice) => choice.bits.map((binding) => [binding.key, choice.label] as const)));
-    this.constraints = new Map(connected.map(({ name, binding }) => [name, labels.get(binding.key) ?? binding.name]));
+    // A pin on the display's segment word constrains the port to that word, not to one bit
+    // of it; a board port pinned on its own keeps its own name (`CA`, not `CA…DP`).
+    const labels = new Map(
+      pinTargets(board).flatMap((choice) => (choice.bits.length === 1 ? [[choice.bits[0].key, choice.label] as const] : [])),
+    );
+    // A pin on individual bits (an XDC's `a[0]` on `SW[0]`) or on a word names them in the
+    // port's order, which no single board port's label says.
+    const perPort = new Map(
+      [...this.pins].flatMap(([port, pin]) => {
+        const resolution = resolvePin(pin, board);
+        const spread = resolution.ok && (resolution.bits.length > 1 || resolution.bits.some((binding) => binding.index !== undefined));
+        return spread ? [[port, resolution.label] as const] : [];
+      }),
+    );
+    this.constraints = new Map(
+      portWires(connected).map(({ name, bits }) => [name, perPort.get(name.toLowerCase()) ?? labels.get(bits[0]?.key ?? '') ?? bits[0]?.name ?? '']),
+    );
     return [...this.constraints].map(([port, boardPort]) => `${port} -> ${boardPort}`);
   }
 
@@ -656,10 +684,12 @@ export class Session {
     this.clearWave();
     this.stopActive('stopped');
     this.state = 'compiling';
+    // One recovery per run: a design that fails again after its netlist is reported, and
+    // the next Run earns its own try.
+    this.recoveredBoardRun = false;
     const request = ++this.runRequest;
     return this.compileAndStart(request, { files, topFile, runTarget });
   }
-
   /**
    * § 7.4: a changed source makes what the flow produced `outdated` and a programmed board
    * `stale`. The same sources are not a change - a re-run leaves Synthesis `done`, which is
@@ -754,6 +784,13 @@ export class Session {
 
   private startRun(engine: SimEngine, plan: RunPlan): void {
     this.lastSentState = null;
+    // A new run starts at 0 simulated ms: a `TIME` left from the previous run
+    // would read as this one's progress, exactly the stale-heartbeat trap the
+    // comment below describes.
+    this.lastSentSimMs = -1;
+    // A recovered run must not inherit the failing run's tail: it would look like this run
+    // crashed the same way (`recoverRun` reads it as this run's own words).
+    this.runOutputTail = '';
     // These outlive a single run — they live in the session's temp
     // directory, and a re-`RUN`/`RESET` reuses it. Inheriting them is not
     // cosmetic: the pacing loop (§ 5.9) reads the heartbeat as "how far
@@ -801,8 +838,16 @@ export class Session {
       if (!wasRunning) return;
       // A board design that ends the simulation itself (`$finish`, `std.env.finish`)
       // is a completed run, not a crash: the student asked for it.
-      if (code === 0) this.send({ verb: 'DONE', reason: 'completed' });
-      else this.send({ verb: 'ERROR', stage: 'runtime', text: stderr || UNEXPLAINED_EXIT_TEXT });
+      if (code === 0) {
+        this.send({ verb: 'DONE', reason: 'completed' });
+        return;
+      }
+      // GHDL's range checks have no hardware counterpart, and the handout examples rely on
+      // a counter wrapping past its subtype bound (`PRD.md` § 20 Rule 5 forbids editing
+      // them). The engine rebuilds the run from the synthesised netlist, which is the
+      // hardware the design becomes, and the design is not touched to do it.
+      // GHDL prints the failure on stdout, not stderr, so the tail is what names it.
+      void this.recoverRun(engine, plan, stderr || this.runOutputTail);
     });
     // The design's own report/assert/$display output — the simulator writes this to
     // stdout, not the result file, so it needs its own forwarding path
@@ -817,6 +862,35 @@ export class Session {
   }
 
   /**
+   * A run that aborted on a range check gets one more try, from the netlist the engine
+   * synthesises in place: what the design becomes as hardware, where a counter that
+   * overflows its subtype wraps instead of aborting. Anything else — no recovery, a
+   * netlist that will not build, a second failure in the recovered run — is reported
+   * as the original error.
+   */
+  private async recoverRun(engine: SimEngine, plan: RunPlan, stderr: string): Promise<void> {
+    const report = () => this.send({ verb: 'ERROR', stage: 'runtime', text: stderr || UNEXPLAINED_EXIT_TEXT });
+    if (this.recoveredBoardRun) {
+      report();
+      return;
+    }
+    this.recoveredBoardRun = true;
+    const recovered = await engine.recoverBoardRun?.(plan, stderr);
+    // Stop, Reset, or a newer RUN arrived while the netlist was building: that run owns
+    // the session now, and this one re-starting would fight it.
+    if (this.destroyed || this.run !== null || this.state === 'running') return;
+    if (recovered !== true) {
+      report();
+      return;
+    }
+    this.sendLogLines([
+      'GHDL stopped on a range check, a failure the board itself cannot have: on hardware, a counter that overflows its subtype wraps.',
+      'Running the design as the synthesised hardware instead, so the counter behaves as it does on the board.',
+    ]);
+    this.startRun(engine, plan);
+  }
+
+  /**
    * The simulator's own output — a design's `$display`/`report` text — goes through a
    * per-run line budget so a design that prints on every clock edge cannot flood the
    * socket and the console (`outputLimiter.ts`). Both run kinds share these three.
@@ -828,6 +902,9 @@ export class Session {
   }
 
   private forwardOutputLine(line: string): void {
+    // Kept for the crash path: GHDL prints `bound check failure at …` on stdout, so a run
+    // that dies with empty stderr is only explicable from here (`recoverRun`).
+    this.runOutputTail = `${this.runOutputTail}${line}\n`.slice(-STDOUT_TAIL_CHARS);
     if (/\S/.test(line) && !this.isHiddenWaveNotice(line)) this.sendLogLines(this.limiter?.accept(line) ?? []);
   }
 
@@ -891,6 +968,23 @@ export class Session {
   }
 
   /**
+   * `TIME` for PRD.md § 10.3: the heartbeat is the testbench's own `now / 1 ms`,
+   * so it is the only place simulated time exists. Called from the pacing tick,
+   * which reads that file anyway, and sends nothing when the value has not
+   * moved — an idle design costs no frames, while a 100 MHz design that is
+   * running sends one per 20 ms of simulated time.
+   *
+   * `wallMs` is real time since this run started, so `simMs / wallMs` is the
+   * ratio the student needs: 1 is real time, 0.002 is a 100 MHz design on GHDL
+   * mcode (§ 10.3: show simulated time *and* the ratio, never one alone).
+   */
+  private reportSimTime(simMs: number): void {
+    if (simMs === this.lastSentSimMs) return;
+    this.lastSentSimMs = simMs;
+    this.send({ verb: 'TIME', simMs, wallMs: Date.now() - this.runStartTime });
+  }
+
+  /**
    * Real-time pacing (§ 5.13): tops the testbench's pacing FIFO up to one
    * grant per `PACING_STEP_MS` of real time since the run started. Grants
    * only ever let the simulation proceed, so a tick that fires late (a
@@ -909,7 +1003,10 @@ export class Session {
       let consumed = 0;
       try {
         const n = parseInt(readFileSync(this.heartbeatPath(), 'utf8').trim(), 10);
-        if (!Number.isNaN(n)) consumed = Math.floor(n / PACING_STEP_MS);
+        if (!Number.isNaN(n)) {
+          consumed = Math.floor(n / PACING_STEP_MS);
+          this.reportSimTime(n);
+        }
       } catch {
         // No heartbeat yet — nothing consumed.
       }
@@ -948,7 +1045,10 @@ export class Session {
       let consumed = 0;
       try {
         const n = parseInt(readFileSync(this.heartbeatPath(), 'utf8').trim(), 10);
-        if (!Number.isNaN(n)) consumed = Math.floor(n / PACING_STEP_MS);
+        if (!Number.isNaN(n)) {
+          consumed = Math.floor(n / PACING_STEP_MS);
+          this.reportSimTime(n);
+        }
       } catch {
         // No heartbeat yet, or GHDL has the file open mid-write (Windows
         // refuses a read of a file held open for writing more readily than

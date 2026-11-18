@@ -53,10 +53,68 @@ export interface PinChoice {
 }
 
 /**
- * The student's choice, `design port name (lower case) -> board port name (lower case)`.
+ * The student's choice, `design port name (lower case) -> board port (lower case)`.
  * A design port without an entry is matched by name, as before.
+ *
+ * A handout's XDC pins individual bits, which no single board port names (`a[0]` on
+ * `SW[0]`, `pos_seg[3]` on `AN[3]`), so an entry may also be a comma-separated list of
+ * bit keys in the design port's own bit order: `sw[0],sw[1],sw[2]`. The order is the
+ * port's, not the board's, because `sel[0]` on `SW[15]` is how the Bab 7 handout pins it.
  */
 export type PinMap = ReadonlyMap<string, string>;
+
+/** A board port as one bit: `SW` width 16 gives `sw[0]`…`sw[15]`; a scalar is its own bit. */
+export interface BoardBit {
+  /** What a bit pin names: `sw[3]`, or `ca` for a one-bit port. */
+  readonly key: string;
+  /** The binding to connect, with `index` set for a vector's bit. */
+  readonly binding: BoardBinding;
+}
+
+/** Every bit of every board port, in board-table order. */
+export function boardBits(board: BoardIo): readonly BoardBit[] {
+  return boardBindings(board).flatMap((binding) => {
+    if (binding.index !== undefined || binding.width === 1) return [{ key: binding.key, binding }];
+    return Array.from({ length: binding.width }, (_, index) => ({
+      key: `${binding.key}[${index}]`,
+      binding: { ...binding, index },
+    }));
+  });
+}
+
+/**
+ * What a pin resolves to: the wires to make, or why § 7.6 refuses it. `kind` is `port` for
+ * a board port or a display word — whose bits the board table already lists in order — and
+ * `bits` for a comma-separated list of bits, whose order the pin itself decides.
+ */
+export type PinResolution =
+  | { readonly ok: true; readonly kind: 'port' | 'bits'; readonly label: string; readonly bits: readonly BoardBinding[]; readonly width: number }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * `pin` as the wires it makes. A board port's own key (or a display word's) is one wire; a
+ * comma-separated list of bit keys is one wire per bit, in the order written.
+ */
+export function resolvePin(pin: string, board: BoardIo): PinResolution {
+  const choice = pinTargets(board).find((candidate) => candidate.key === pin);
+  if (choice !== undefined) return { ok: true, kind: 'port', label: choice.label, bits: choice.bits, width: choiceWidth(choice) };
+  const wanted = pin.split(',').map((part) => part.trim());
+  if (wanted.some((part) => part === '')) return { ok: false, reason: `${pin} names no board bit.` };
+  const bits = new Map(boardBits(board).map((bit) => [bit.key, bit.binding]));
+  const resolved: BoardBinding[] = [];
+  for (const part of wanted) {
+    const binding = bits.get(part);
+    if (binding === undefined) return { ok: false, reason: `${part} is not a board bit on this board.` };
+    if (resolved.some((taken) => bitKeyOf(taken) === part)) return { ok: false, reason: `${part} is pinned to more than one bit.` };
+    resolved.push(binding);
+  }
+  return { ok: true, kind: 'bits', label: wanted.join(','), bits: resolved, width: resolved.length };
+}
+
+/** The bit key of one binding: `sw[3]` for a vector's bit, `ca` for a scalar. */
+function bitKeyOf(binding: BoardBinding): string {
+  return binding.index === undefined ? binding.key : `${binding.key}[${binding.index}]`;
+}
 
 /**
  * The board ports a pin may name, each alone — plus, for a multiplexed display, the
@@ -98,23 +156,25 @@ function segmentWords(board: BoardIo): readonly PinChoice[] {
   }
   return words;
 }
-
 const bits = (width: number): string => `${width} bit${width === 1 ? '' : 's'}`;
 
 const choiceWidth = (choice: PinChoice): number => choice.bits.reduce((sum, binding) => sum + binding.width, 0);
-
+/** What § 7.6's checks need to know about the thing a pin lands on. */
+interface PinSpan {
+  readonly label: string;
+  readonly bits: readonly BoardBinding[];
+  readonly width: number;
+}
 /** § 7.6: an output cannot drive a switch. `inout` is taken as either. */
-function directionError(port: PinPort, choice: PinChoice): string | undefined {
-  const direction = choice.bits[0]?.direction;
+function directionError(port: PinPort, span: PinSpan): string | undefined {
+  const direction = span.bits[0]?.direction;
   if (port.direction === undefined || port.direction === 'inout' || port.direction === direction) return undefined;
   const wanted = direction === 'in' ? 'an input' : 'an output';
-  return `${port.name} is ${port.direction === 'in' ? 'an input' : 'an output'}, and ${choice.label} is ${wanted} on this board.`;
+  return `${port.name} is ${port.direction === 'in' ? 'an input' : 'an output'}, and ${span.label} is ${wanted} on this board.`;
 }
-
-function widthError(port: PinPort, choice: PinChoice): string | undefined {
-  const width = choiceWidth(choice);
-  if (port.width === undefined || port.width === width) return undefined;
-  return `${port.name} is ${bits(port.width)}, and ${choice.label} is ${bits(width)} on this board.`;
+function widthError(port: PinPort, span: PinSpan): string | undefined {
+  if (port.width === undefined || port.width === span.width) return undefined;
+  return `${port.name} is ${bits(port.width)}, and ${span.label} is ${bits(span.width)} on this board.`;
 }
 
 /**
@@ -125,62 +185,115 @@ function widthError(port: PinPort, choice: PinChoice): string | undefined {
  *
  * A pin on a word (the display's segments) is one wire per bit, all with the same design
  * port: the testbench generators join a run of wires for one port into one association.
+ * A pin on individual bits (a handout's XDC: `a[0]` on `SW[0]`) is the same shape, emitted
+ * after the board-order wires so that its bits stay in the order the pin wrote them —
+ * `sel[0]` on `SW[15]` comes before `sel[1]` on `SW[14]`, which board order would reverse.
  */
 export function connectPorts(ports: readonly PinPort[], board: BoardIo, pins: PinMap = new Map()): ConnectResult {
   const bindings = boardBindings(board);
-  const targets = new Map(pinTargets(board).map((choice) => [choice.key, choice]));
   const declared = new Map(ports.map((port) => [port.name.toLowerCase(), port]));
-  /** Board key -> the design port pinned to it, and § 7.6's complaints about the rest. */
-  const { pinnedTo, errors } = applyPins(declared, targets, pins);
-
+  const { pinnedTo, bitWires, bitClaimed, claimed, errors } = applyPins(declared, board, pins);
+  /** A port a pin moved somewhere else must not keep the wire it moved off. */
   const moved = new Set([...pinnedTo.values()].map((port) => port.name.toLowerCase()));
   const connected = bindings.flatMap((binding): ConnectPort[] => {
+    // A bit a pin listed on its own is in `bitWires`, in the order the pin wrote it: the
+    // board-order run would attach it a second time, which VHDL reads as a duplicate
+    // association for one formal (`led_seg(8) => dp_sig` twice).
+    if (bitClaimed.has(binding.key)) return [];
     const pinned = pinnedTo.get(binding.key);
     if (pinned !== undefined) return [{ key: pinned.name.toLowerCase(), name: pinned.name, binding }];
     const match = declared.get(binding.key);
-    // A port a pin moved somewhere else must not keep the wire it moved off.
-    if (match === undefined || moved.has(binding.key)) return [];
+    // A board port whose bits a pin claimed is wired by those pins, not by the name match.
+    if (match === undefined || moved.has(binding.key) || claimed.has(binding.key)) return [];
     return [{ key: match.name.toLowerCase(), name: match.name, binding }];
   });
-  return { connected, errors };
+  return { connected: [...connected, ...bitWires], errors };
+}
+/** The first key of `keys` another pin already took, which § 7.6 refuses. */
+function takenClash(keys: readonly string[], taken: ReadonlySet<string>): string | undefined {
+  return keys.find((key) => taken.has(key));
 }
 
-/** The pins that survive § 7.6's checks, as board key -> the port pinned to it. */
+/** `resolution`'s keys: a board port or word is keyed by its own key, a bit list per bit. */
+function resolutionKeys(resolution: Extract<PinResolution, { ok: true }>): string[] {
+  return resolution.kind === 'port' ? resolution.bits.map((binding) => binding.key) : resolution.bits.map(bitKeyOf);
+}
+
+/** What one pin means for the board: the keys it takes, or why § 7.6 refused it. */
+type PinCheck = { readonly keys: string[]; readonly resolution: Extract<PinResolution, { ok: true }> } | { readonly error: string };
+
+/**
+ * Whether `pin` may wire `port` on `board`, given the keys other pins already took, or why it
+ * may not: a board port the board does not have, a key taken twice, a direction/width mismatch.
+ */
+function checkPin(port: PinPort, pin: string, { board, taken }: { readonly board: BoardIo; readonly taken: ReadonlySet<string> }): PinCheck {
+  const resolution = resolvePin(pin, board);
+  if (!resolution.ok) return { error: `${port.name} is pinned to ${pin}, which this board does not have.` };
+  const keys = resolutionKeys(resolution);
+  const clash = takenClash(keys, taken);
+  if (clash !== undefined) return { error: `${clash} is assigned to more than one port.` };
+  const problem = directionError(port, resolution) ?? widthError(port, resolution);
+  return problem === undefined ? { keys, resolution } : { error: problem };
+}
+
+/** What `applyPins` is building, so `recordPin` can add to it without a graph of references. */
+interface PinTable {
+  readonly pinnedTo: Map<string, PinPort>;
+  readonly bitWires: ConnectPort[];
+  /** The board bits a bit-list pin wired on its own, which board order must not wire again. */
+  readonly bitClaimed: Set<string>;
+  readonly claimed: Set<string>;
+  readonly taken: Set<string>;
+}
+
+/** Books `check`'s keys onto `port`, and its bit wires when the pin named bits one at a time. */
+function recordPin(check: Extract<PinCheck, { keys: string[] }>, port: PinPort, table: PinTable): void {
+  for (const key of check.keys) {
+    table.taken.add(key);
+    table.pinnedTo.set(key, port);
+  }
+  for (const binding of check.resolution.bits) table.claimed.add(binding.key);
+  // A word's bits sit next to each other in the board table, so board order keeps them in the
+  // port's order; individual bits need not (`sel[0]` on `SW[15]`), so they are listed.
+  if (check.resolution.kind !== 'bits') return;
+  table.bitWires.push(...check.resolution.bits.map((binding) => ({ key: port.name.toLowerCase(), name: port.name, binding })));
+  for (const binding of check.resolution.bits) table.bitClaimed.add(binding.key);
+}
+
+/**
+ * The pins that survive § 7.6's checks, as board bit key -> the port pinned to it. A pin on
+ * a word or a whole board port lands under that port's own key; a pin on bits lands under
+ * `sw[3]`, and its wire is returned separately because board order cannot express it.
+ */
 function applyPins(
   declared: ReadonlyMap<string, PinPort>,
-  targets: ReadonlyMap<string, PinChoice>,
+  board: BoardIo,
   pins: PinMap,
-): { pinnedTo: Map<string, PinPort>; errors: string[] } {
+): { pinnedTo: Map<string, PinPort>; bitWires: ConnectPort[]; bitClaimed: Set<string>; claimed: Set<string>; errors: string[] } {
   const errors: string[] = [];
-  const pinnedTo = new Map<string, PinPort>();
+  const table: PinTable = {
+    pinnedTo: new Map(),
+    bitWires: [],
+    bitClaimed: new Set(),
+    claimed: new Set(),
+    taken: new Set(),
+  };
   for (const [portKey, pin] of pins) {
-    const port = declared.get(portKey);
     // A pin for a port the design no longer has is stale, not wrong: the source edit
     // removed the port, and the choice goes with it.
+    const port = declared.get(portKey);
     if (port === undefined) continue;
-    const choice = targets.get(pin);
-    if (choice === undefined) {
-      errors.push(`${port.name} is pinned to ${pin}, which this board does not have.`);
-      continue;
-    }
-    const clash = choice.bits.find((binding) => pinnedTo.has(binding.key));
-    if (clash !== undefined) {
-      errors.push(`${clash.name} is assigned to more than one port.`);
-      continue;
-    }
-    const problem = directionError(port, choice) ?? widthError(port, choice);
-    if (problem !== undefined) {
-      errors.push(problem);
-      continue;
-    }
-    for (const binding of choice.bits) pinnedTo.set(binding.key, port);
+    const check = checkPin(port, pin, { board, taken: table.taken });
+    if ('error' in check) errors.push(check.error);
+    else recordPin(check, port, table);
   }
-  return { pinnedTo, errors };
+  return { ...table, errors };
 }
-
 /** The board ports a pin for `port` may go on: § 7.6's direction and width rules. */
 export function pinChoices(port: PinPort, board: BoardIo): readonly PinChoice[] {
-  return pinTargets(board).filter((choice) => directionError(port, choice) === undefined && widthError(port, choice) === undefined);
+  return pinTargets(board).filter(
+    (choice) => directionError(port, { ...choice, width: choiceWidth(choice) }) === undefined && widthError(port, { ...choice, width: choiceWidth(choice) }) === undefined,
+  );
 }
 
 /** A run of wires for one design port: `bits` is one board port, or a word's bits, LSB first. */

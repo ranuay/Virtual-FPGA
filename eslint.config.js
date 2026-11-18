@@ -23,6 +23,9 @@ const NEW_CODE = [
   'src/boards/**/*.ts',
   'src/components/workbench/useBoards.ts',
   'src/components/workbench/useBoardChange.ts',
+  // The Simulation card's simulated-time/speed line (PRD.md § 10.3).
+  'src/components/workbench/simulationSpeed.ts',
+  'src/components/workbench/simulationSpeed.test.ts',
   'src/components/workbench/BoardChangeDialog.tsx',
   'src/components/workbench/BoardIoPanel.tsx',
   'src/components/workbench/GroupedIoPanel.tsx',

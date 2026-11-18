@@ -32,7 +32,7 @@ export function vhdlActual({ signal, index }: BoardBinding): string {
   return index === undefined ? signal : `${signal}(${index})`;
 }
 
-function displaySignals(displays: SevenSegment): string[] {
+function displaySignals(displays: SevenSegment, driven: boolean): string[] {
   const off = offLevel(displays.activeLow);
   if (displays.kind === 'independent') {
     const names = displays.ports.map((_, index) => `hex${index}_sig`).join(', ');
@@ -42,13 +42,22 @@ function displaySignals(displays: SevenSegment): string[] {
   return [
     `  signal seg_sig    : ${vector(SEGMENT_COUNT)} := (others => ${off});`,
     ...point,
-    `  signal an_sig     : ${vector(displays.digits)} := (others => ${offLevel(displays.digitEnablesActiveLow)});`,
+    `  signal an_sig     : ${vector(displays.digits)} := (others => ${anodeIdle(displays, driven)});`,
     ...decoderDeclarations(displays),
   ];
 }
 
+/**
+ * The level `an_sig` rests at while nothing drives it. Off is right when the design owns the
+ * digit enables; a design that never mentions them (a static `seg` only, § 7.4) would leave
+ * every digit dark, so an anode-nothing-mapped display rests *enabled* and shows its pattern.
+ */
+function anodeIdle(displays: MultiplexedDisplays, driven: boolean): string {
+  const on = offLevel(!displays.digitEnablesActiveLow);
+  return driven ? offLevel(displays.digitEnablesActiveLow) : on;
+}
 /** Every testbench-side board signal, at the level its part rests at or is off at. */
-export function signalDeclarations(board: BoardIo): string {
+export function signalDeclarations(board: BoardIo, digitEnablesDriven = true): string {
   const reset = board.resetButton === undefined ? [] : [`  signal rstbtn_sig : std_logic := ${offLevel(board.resetButton.activeLow)};`];
   return [
     "  signal clk_sig    : std_logic := '0';",
@@ -58,7 +67,7 @@ export function signalDeclarations(board: BoardIo): string {
     `  signal key_sig    : ${vector(buttonCount(board))} := (others => ${offLevel(board.pushbuttons.activeLow)});`,
     ...reset,
     `  signal ledr_sig   : ${vector(board.leds.count)} := (others => '0');`,
-    ...displaySignals(board.sevenSegment),
+    ...displaySignals(board.sevenSegment, digitEnablesDriven),
   ].join('\n');
 }
 
@@ -208,7 +217,9 @@ export function ioPollCopies(board: BoardIo): string {
 function multiplexedAssembly(displays: MultiplexedDisplays, ledCount: number, width: number): string {
   return `      now_bits(1 to ${ledCount}) := slv2str(ledr_sig);
       for d in 0 to ${displays.digits - 1} loop
-        if seen(d) = '1' and now - lit_at(d) <= DISPLAY_PERSIST then
+        if an_sig(d) = AN_ON then
+          word := ${liveWord(displays)};
+        elsif seen(d) = '1' and now - lit_at(d) <= DISPLAY_PERSIST then
           word := held(d);
         else
           word := (others => SEG_OFF);

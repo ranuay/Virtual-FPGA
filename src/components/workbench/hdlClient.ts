@@ -45,6 +45,11 @@ export interface HdlClientHandlers {
   onState(bits: string): void;
   onLog(text: string): void;
   onError(stage: string, text: string): void;
+  /**
+   * How far the simulation has run, for PRD.md § 10.3's readout: `simMs` of
+   * simulated time after `wallMs` of real time. Omitted, `TIME` frames are ignored.
+   */
+  onTime?(simMs: number, wallMs: number): void;
   onDone(reason: string): void;
   onClosed(): void;
   /**
@@ -194,6 +199,19 @@ export class HdlClient {
       case 'STATE':
         this.handlers.onState(inline);
         break;
+      case 'TIME': {
+        const [simText = '', wallText = '', ...extra] = inline.split(' ');
+        // `Number('')` is 0: an absent half must be rejected before coercion, or a
+        // bare `TIME` reaches the readout as "0 simulated in 0 ms".
+        const simMs = simText === '' ? Number.NaN : Number(simText);
+        const wallMs = wallText === '' ? Number.NaN : Number(wallText);
+        // A malformed TIME is dropped, like an unknown verb (§ 6.2): the
+        // readout is a courtesy, never a reason to close the socket.
+        if (extra.length === 0 && Number.isFinite(simMs) && Number.isFinite(wallMs) && simMs >= 0 && wallMs >= 0) {
+          this.handlers.onTime?.(simMs, wallMs);
+        }
+        break;
+      }
       case 'LOG':
         this.handlers.onLog(body);
         break;

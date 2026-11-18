@@ -128,7 +128,12 @@ export function boardPortSpellings(ports: readonly Port[], board: BoardIo, pins?
     direction: direction === 'output' ? 'out' : direction === 'input' ? 'in' : direction,
     width,
   }));
-  return new Map(connectPorts(pinPorts, board, pins).connected.map(({ binding, name }) => [binding.key, name]));
+  // A pin on individual bits (§ 7.6: an XDC's `a[0]` on `SW[0]`) is VHDL-only. This
+  // testbench names one board port per association by board order, so it cannot spell a bit
+  // of a vector; dropping the pin leaves that port unconnected rather than wiring the whole
+  // vector to a 3-bit port, which board order would otherwise do.
+  const wired = connectPorts(pinPorts, board, pins).connected.filter(({ binding }) => binding.index === undefined);
+  return new Map(wired.map(({ binding, name }) => [binding.key, name]));
 }
 
 /**

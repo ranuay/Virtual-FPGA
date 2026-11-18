@@ -190,6 +190,13 @@ async function prepareBoard({ dir, top, topContent, board, pins }: BoardTop, not
     pacingFromStdin: PACING === 'stdin',
     tiedInputs: extraPorts.tiedInputs,
     pins,
+    // A handout may declare `a : in bit` (Bab 1 behavioral): IEEE 1164 has no conversion
+    // for a port map, so the testbench bridges each of those ports (`tbTemplate.ts`).
+    bitPorts: new Set(
+      portDeclarations(topContent, top.name)
+        .filter((port) => port.type === 'bit')
+        .map((port) => port.name.toLowerCase()),
+    ),
   });
   writeFileSync(join(dir, `${TB_ENTITY}.vhdl`), testbench);
 
@@ -214,7 +221,7 @@ async function prepareBoard({ dir, top, topContent, board, pins }: BoardTop, not
   const timing = boardTimingFor(connected.some(({ binding }) => binding.role === 'clock'));
   const banner = await ghdlBanner(dir);
   const messages = [...(banner === undefined ? [] : [banner]), ...notes, ...shapeNotes(shapes), ...extraPorts.warnings];
-  return { ok: true, plan: boardPlan(dir, timing, messages) };
+  return { ok: true, plan: { ...boardPlan(dir, timing, messages), boardTop: top.name } };
 }
 
 /**
@@ -295,10 +302,48 @@ function startBoardRun(plan: RunPlan, files: BoardFiles) {
   );
 }
 
+
+/**
+ * GHDL's hardware-only abort: a value that left its subtype. A chip has no such check, so
+ * a range that overflows simply wraps — which is what the handout examples rely on when a
+ * `natural range 0 to N` counter is allowed to reach N+1 before being reset.
+ */
+const BOUND_CHECK = /bound check failure|index \d+ out of bounds|range check failure|numeric_std: /i;
+
+/**
+ * `use IEEE.std_logic_arith.all` and its siblings at the netlist's context clauses. GHDL's
+ * synthesiser writes them there, and under `-fsynopsys` they redeclare `unsigned`/`signed`
+ * against numeric_std's — which makes every netlist analysis fail with "no declaration for
+ * unsigned (due to conflicts)". Dropping the clauses leaves the architecture's own numeric_std.
+ */
+const CONFLICTING_CONTEXT = /^\s*use\s+ieee\.std_logic_(?:arith|unsigned|signed|misc)\.all\s*;\s*$/gim;
+
+/**
+ * Rebuilds a board run from the design's synthesised netlist: what the hardware actually
+ * becomes, where an out-of-range increment wraps instead of aborting. The netlist replaces
+ * the entity in the work library, the testbench is re-elaborated against it, and the same
+ * plan runs. The design's source is never edited — the handout is the student's code
+ * (`PRD.md` § 20 Rule 5).
+ */
+async function recoverBoardRun(plan: RunPlan, stderr: string): Promise<boolean> {
+  if (plan.mode !== 'board' || plan.boardTop === undefined || !BOUND_CHECK.test(stderr)) return false;
+  const netlist = 'hdl_netlist.vhdl';
+  const synthesised = await ghdl(['synth', ...GHDL_OPTIONS, '--out=vhdl', plan.boardTop], plan.dir);
+  if (synthesised.code !== 0 || synthesised.out.trim() === '') return false;
+  writeFileSync(join(plan.dir, netlist), synthesised.out.replace(CONFLICTING_CONTEXT, ''));
+  if ((await analyzeFile(plan.dir, netlist)) !== undefined) return false;
+  // The netlist redefines the student's entity, which `obsoletes` the testbench architecture
+  // that instantiates it: the testbench has to be analysed again before elaboration.
+  if ((await analyzeFile(plan.dir, `${TB_ENTITY}.vhdl`)) !== undefined) return false;
+  const elaborated = await ghdl(['-e', ...GHDL_OPTIONS, plan.runTarget], plan.dir);
+  return elaborated.code === 0;
+}
+
 export const ghdlEngine: SimEngine = {
   language: 'vhdl',
   prepare,
   startBoardRun,
   startBatchRun: (plan, { onOutput, timeoutMs, waveFile }) =>
     runBatch(plan.dir, plan.runTarget, onOutput, timeoutMs, waveArguments(plan.wave, waveFile)),
+  recoverBoardRun,
 };

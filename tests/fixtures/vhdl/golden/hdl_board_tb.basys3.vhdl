@@ -253,7 +253,9 @@ begin
       lit_at := digit_last;
       now_bits(1 to 16) := slv2str(ledr_sig);
       for d in 0 to 3 loop
-        if seen(d) = '1' and now - lit_at(d) <= DISPLAY_PERSIST then
+        if an_sig(d) = AN_ON then
+          word := dp_sig & seg_sig;
+        elsif seen(d) = '1' and now - lit_at(d) <= DISPLAY_PERSIST then
           word := held(d);
         else
           word := (others => SEG_OFF);

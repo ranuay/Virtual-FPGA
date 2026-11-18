@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Copyright (C) 2026 Rune Langøy
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { cx } from '../board';
 import { pinsOf } from '../../boards/parsePins';
 import type { BoardPins } from '../../boards/types';
+import { readXdc } from '../../boards/xdcImport';
 import { Dialog } from './Dialog';
 import { ChipIcon, PlayIcon } from './icons';
 import content from './designFlowContent.json';
@@ -117,19 +118,79 @@ function FlowStepItem({ step, entry, open, disabled, onToggle, onRun }: FlowStep
   );
 }
 
+/** What an imported `.xdc` placed, and the lines of it that could not be. */
+type ImportOutcome = { readonly placed: number; readonly problems: readonly string[] };
+
 /**
- * § 7.6: the top-level ports, and the board port each is pinned to. A port with choices
- * gets a select: picking one sends the pin, and the empty option goes back to the name
- * match. A port the board offers no candidate for stays plain text.
+ * § 7.6's import: a handout's `.xdc` names its own pins, and the student should not retype
+ * them. The file's pins go through I/O Planning one by one, so what the board does next is
+ * the same as if they had been chosen from the selects.
  */
+function XdcImportControl(props: {
+  busy: boolean;
+  ports: FlowWire['ports'];
+  pins: BoardPins;
+  onPin: DesignFlowPanelProps['onPin'];
+  onReport: (report: ImportOutcome) => void;
+}) {
+  const { busy, ports, pins, onPin, onReport } = props;
+  const known = new Set(ports.map((port) => port.name.toLowerCase()));
+  return (
+    <label className="wb-flow__ports-import">
+      Import XDC…
+      <input
+        type="file"
+        accept=".xdc,text/plain"
+        disabled={busy}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (file !== undefined) void importPins(file, { known, pins, onPin, onReport });
+        }}
+      />
+    </label>
+  );
+}
+
+/**
+ * The file's pins, placed. A port the design does not have is the file's mistake, not the
+ * student's: it is reported and the rest still placed, rather than the whole file refused
+ * over one stale name.
+ */
+async function importPins(
+  file: File,
+  target: Pick<Parameters<typeof XdcImportControl>[0], 'pins' | 'onPin' | 'onReport'> & { readonly known: ReadonlySet<string> },
+): Promise<void> {
+  const { known, pins, onPin, onReport } = target;
+  const { pins: imported, problems } = readXdc(await file.text(), pins);
+  const placed = imported.filter((pin) => known.has(pin.port.toLowerCase()));
+  const unknown = imported.filter((pin) => !known.has(pin.port.toLowerCase())).map((pin) => `${pin.port} is not a port of this design.`);
+  for (const pin of placed) onPin(pin.port, pin.spec);
+  onReport({ placed: placed.length, problems: [...unknown, ...problems] });
+}
+
+/** What the last import did, above the port table. */
+function ImportReport({ report }: { report: ImportOutcome | null }) {
+  if (report === null) return null;
+  return (
+    <p className="wb-flow__ports-report">
+      {`${report.placed} port${report.placed === 1 ? '' : 's'} pinned from the file.`}
+      {report.problems.map((problem) => (
+        <span key={problem} className="wb-flow__ports-problem">
+          {problem}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function PortTable({ flow, pins, busy, onPin }: { flow: FlowWire; pins: BoardPins; busy: boolean; onPin: DesignFlowPanelProps['onPin'] }) {
+  const [report, setReport] = useState<ImportOutcome | null>(null);
   const unpinned = flow.ports.filter((port) => (port.pin ?? port.constraint) === undefined).length;
   return (
     <div className="wb-flow__ports">
-      <h3 className="wb-flow__ports-title">
-        I/O ports
-        {unpinned > 0 && <span className="wb-flow__ports-note">{unpinned} without a pin</span>}
-      </h3>
+      <PortsHeader unpinned={unpinned} busy={busy} ports={flow.ports} pins={pins} onPin={onPin} onReport={setReport} />
+      <ImportReport report={report} />
       <table>
         <thead>
           <tr>
@@ -142,23 +203,53 @@ function PortTable({ flow, pins, busy, onPin }: { flow: FlowWire; pins: BoardPin
         </thead>
         <tbody>
           {flow.ports.map((port) => (
-            <tr key={port.name}>
-              <td>
-                <code>{port.name}</code>
-              </td>
-              <td>{port.direction}</td>
-              <td>{port.width ?? '—'}</td>
-              <td>
-                <PinCell port={port} busy={busy} onPin={onPin} />
-              </td>
-              <td>
-                <code>{pinsText(pins, port)}</code>
-              </td>
-            </tr>
+            <PortRow key={port.name} port={port} pins={pins} busy={busy} onPin={onPin} />
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** The table's heading, its unpinned count, and the `.xdc` import beside them. */
+function PortsHeader({ unpinned, ...importProps }: {
+  unpinned: number;
+  busy: boolean;
+  ports: FlowWire['ports'];
+  pins: BoardPins;
+  onPin: DesignFlowPanelProps['onPin'];
+  onReport: (report: ImportOutcome) => void;
+}) {
+  return (
+    <h3 className="wb-flow__ports-title">
+      I/O ports
+      {unpinned > 0 && <span className="wb-flow__ports-note">{unpinned} without a pin</span>}
+      <XdcImportControl {...importProps} />
+    </h3>
+  );
+}
+
+/** One port's row: its name, direction, width, board port and the package pins behind it. */
+function PortRow({ port, pins, busy, onPin }: {
+  port: FlowWirePort;
+  pins: BoardPins;
+  busy: boolean;
+  onPin: DesignFlowPanelProps['onPin'];
+}) {
+  return (
+    <tr>
+      <td>
+        <code>{port.name}</code>
+      </td>
+      <td>{port.direction}</td>
+      <td>{port.width ?? '—'}</td>
+      <td>
+        <PinCell port={port} busy={busy} onPin={onPin} />
+      </td>
+      <td>
+        <code>{pinsText(pins, port)}</code>
+      </td>
+    </tr>
   );
 }
 
@@ -180,24 +271,32 @@ function pinsText(pins: BoardPins, port: FlowWirePort): string {
 
 /** One row's board port: a select when the board offers candidates, plain text otherwise. */
 function PinCell({ port, busy, onPin }: { port: FlowWirePort; busy: boolean; onPin: DesignFlowPanelProps['onPin'] }) {
-  if (port.choices === undefined || port.choices.length === 0) {
-    return <>{(port.pin ?? port.constraint) ?? <span className="wb-flow__unpinned">unassigned</span>}</>;
-  }
+  const choices = port.choices ?? [];
+  const current = port.pin ?? port.constraint ?? '';
+  if (choices.length === 0) return <>{pinnedText(current)}</>;
+  // An imported pin (§ 7.6) is a bit list no board port names, so it is not one of the
+  // choices; showing it as the selected option keeps the row honest about what it pins.
+  const extra = current === '' || choices.includes(current) ? [] : [current];
   return (
     <select
       aria-label={`Board port for ${port.name}`}
-      value={port.pin ?? port.constraint ?? ''}
+      value={current}
       disabled={busy}
       onChange={(event) => onPin(port.name, event.target.value === '' ? undefined : event.target.value)}
     >
       <option value="">unassigned</option>
-      {port.choices.map((choice) => (
+      {[...extra, ...choices].map((choice) => (
         <option key={choice} value={choice}>
           {choice}
         </option>
       ))}
     </select>
   );
+}
+
+/** A port with no candidate list: the pin it landed on, or `unassigned`. */
+function pinnedText(current: string): ReactNode {
+  return current === '' ? <span className="wb-flow__unpinned">unassigned</span> : current;
 }
 
 interface JumpDialogProps {

@@ -411,6 +411,10 @@ export function Workbench() {
   const flowBusy = flow?.steps.some((entry) => entry.status === 'running') ?? false;
 
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // The backend's `TIME` frames (PRD.md § 10.3): simulated ms after real ms. Kept
+  // from the last frame so a paused design still shows its speed, and cleared only
+  // when the next run starts.
+  const [simTime, setSimTime] = useState<{ simMs: number; wallMs: number } | undefined>(undefined);
   const elapsedTimer = useRef<number | null>(null);
 
   // The Board pane: inputs the student sets, outputs the simulation drives (useBoardIo).
@@ -562,6 +566,10 @@ export function Workbench() {
           // A board run records no waveform (W1): the view closes.
           boardStateSeen();
         },
+        // The readout PRD.md § 10.3 asks for. Held in state rather than a ref: it is
+        // rendered, and a frame per 20 ms of simulated time is cheap beside the STATE
+        // frames this run already sends.
+        onTime: (simMs, wallMs) => setSimTime({ simMs, wallMs }),
         onLog: (text) => {
           appendLog(withBoardName(text, activeBoardName.current));
           const located = recordDiagnostics(text, filesRef.current).filter((d) => d.severity === 'error');
@@ -1512,6 +1520,7 @@ export function Workbench() {
     setLogLines([]);
     stopElapsedTimer();
     setElapsedSeconds(0);
+    setSimTime(undefined);
     setStatus('compiling');
     setRunFileId(fileId);
     setRunUnitName(unitName);
@@ -1602,6 +1611,7 @@ export function Workbench() {
     setLogLines([]);
     stopElapsedTimer();
     setElapsedSeconds(0);
+    setSimTime(undefined);
     blankBoard();
   };
 
@@ -2046,6 +2056,7 @@ export function Workbench() {
             <SimulationCard
               status={status}
               elapsedSeconds={elapsedSeconds}
+              simTime={simTime}
               topFile={topFileName}
               onStart={handleStart}
               onStop={handleStop}

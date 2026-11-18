@@ -188,7 +188,8 @@ describe('buildBoardTestbench on boards of other shapes (docs/board_io_v2_spec.m
     assert.match(instantiation('top', spelled('btnC', 'CA'), NEXYS_A7_BOARD_IO), /\.btnC\(key_sig\[0\]\), \.CA\(seg_sig\[0\]\)/);
     const lines = tieOffs(spelled('CA'), NEXYS_A7_BOARD_IO);
     assert.ok(lines.includes("assign seg_sig[1] = 1'b1;"));
-    assert.ok(lines.includes("assign an_sig = 8'hFF;"));
+    // An unmapped AN rests enabled: a design with only `seg` must still light the display.
+    assert.ok(lines.includes("assign an_sig = 8'b0;"));
     assert.ok(!lines.some((line) => line.includes('seg_sig[0]')));
   });
 

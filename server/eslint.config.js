@@ -38,6 +38,8 @@ const NEW_CODE = [
   'src/boardNames.ts',
   'src/integration/boardShapes.test.ts',
   'src/integration/bounceTrain.test.ts',
+  // The ACSL handouts on the Nexys A7 board (docs/acsl_tickets.md T4).
+  'src/integration/nexysHandouts.test.ts',
 ];
 
 const MAX_FUNCTION_LINES = 40;

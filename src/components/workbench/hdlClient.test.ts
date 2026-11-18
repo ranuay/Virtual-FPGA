@@ -144,6 +144,43 @@ describe('HdlClient.run', () => {
   });
 });
 
+describe('HdlClient and the simulated-time readout (PRD.md § 10.3)', () => {
+  beforeEach(() => {
+    FakeSocket.last = undefined;
+    FakeSocket.initialState = FakeSocket.OPEN;
+    vi.stubGlobal('WebSocket', FakeSocket);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('a TIME frame reaches onTime as the pair it carries', () => {
+    const handlers = { ...recordingHandlers(), onTime: vi.fn() };
+    const client = new HdlClient('ws://test', handlers);
+    client.run(PROJECT, 'top.vhd', null, false, DEFAULT_BOARD.ports);
+    const socket = FakeSocket.last;
+    if (socket === undefined) throw new Error('no socket was opened');
+    socket.receive('WELCOME 4');
+    socket.receive('TIME 168 72000');
+    expect(handlers.onTime).toHaveBeenCalledWith(168, 72_000);
+  });
+
+  test('a malformed TIME is ignored rather than closing the socket', () => {
+    const onTime = vi.fn();
+    const onClosed = vi.fn();
+    const client = new HdlClient('ws://test', { ...recordingHandlers(), onTime, onClosed });
+    client.run(PROJECT, 'top.vhd', null, false, DEFAULT_BOARD.ports);
+    const socket = FakeSocket.last;
+    if (socket === undefined) throw new Error('no socket was opened');
+    socket.receive('WELCOME 4');
+    socket.receive('TIME 168');
+    socket.receive('TIME x y');
+    expect(onTime).not.toHaveBeenCalled();
+    expect(onClosed).not.toHaveBeenCalled();
+  });
+});
+
 describe('HdlClient and waveforms (docs/waveform_viewer_spec.md § 7.4)', () => {
   beforeEach(() => {
     FakeSocket.last = undefined;

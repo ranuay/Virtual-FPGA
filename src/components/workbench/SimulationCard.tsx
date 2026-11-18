@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Rune Langøy
 
 import { cx } from '../board';
+import { simulationReadout } from './simulationSpeed';
 import './SimulationCard.css';
 
 export type SimStatus = 'stopped' | 'compiling' | 'running';
@@ -10,12 +11,16 @@ export interface SimulationCardProps {
   status: SimStatus;
   /** Seconds since the current (or last) run started. */
   elapsedSeconds: number;
+  /**
+   * The backend's `TIME` frame (PRD.md § 10.3): simulated ms after real ms.
+   * Absent until the first frame arrives, and for a backend too old to send it.
+   */
+  simTime?: { readonly simMs: number; readonly wallMs: number };
   /** The top-level entity file this run is elaborating. */
   topFile: string;
   onStart: () => void;
   onStop: () => void;
 }
-
 const STATUS_LABEL: Record<SimStatus, string> = {
   stopped: 'Stopped',
   compiling: 'Compiling…',
@@ -36,9 +41,10 @@ function formatElapsed(totalSeconds: number): string {
  * run status, integrated into the sidebar rather than floating over the
  * board (matches the reference Simulate-and-Files-pane mockup).
  */
-export function SimulationCard({ status, elapsedSeconds, topFile, onStart, onStop }: SimulationCardProps) {
+export function SimulationCard({ status, elapsedSeconds, simTime, topFile, onStart, onStop }: SimulationCardProps) {
   const running = status === 'running';
   const compiling = status === 'compiling';
+  const speed = simTime === undefined ? undefined : simulationReadout(simTime.simMs, simTime.wallMs);
 
   return (
     <section className="wb-simcard">
@@ -68,6 +74,12 @@ export function SimulationCard({ status, elapsedSeconds, topFile, onStart, onSto
           <strong className="wb-simcard__top">{topFile}</strong>
         </span>
       </div>
+      {speed !== undefined && (
+        <div className="wb-simcard__meta" title="Simulated time and how fast the simulation runs against the wall clock">
+          <span className="wb-icon wb-icon--clock" aria-hidden="true" />
+          <span className="wb-simcard__label-text">{speed}</span>
+        </div>
+      )}
     </section>
   );
 }

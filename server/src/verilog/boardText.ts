@@ -77,12 +77,21 @@ export function verilogActual({ signal, index }: BoardBinding): string {
   return index === undefined ? signal : `${signal}[${index}]`;
 }
 
-/** What a board output reads as when the design lacks it: its off value. None for an input. */
+/**
+ * What a board output reads as when the design lacks it: its off value. None for an input.
+ *
+ * The digit enables are the exception. A design that drives only `seg` (a static digit,
+ * § 7.4) never owns `AN`, and an off enable would leave every digit dark; resting them
+ * *enabled* shows the pattern on the display, which is what the board looks like when
+ * the anodes are pulled to their active level.
+ */
 export function outputOffValue(binding: BoardBinding, board: BoardIo): string | undefined {
   if (binding.direction === 'in') return undefined;
   const displays = board.sevenSegment;
   if (binding.role === 'leds') return zeros(board.leds.count);
-  if (binding.role === 'digitEnables' && displays.kind === 'multiplexed') return offValue(displays.digits, displays.digitEnablesActiveLow);
+  if (binding.role === 'digitEnables' && displays.kind === 'multiplexed') {
+    return offValue(displays.digits, !displays.digitEnablesActiveLow);
+  }
   if (binding.role === 'segments') return offValue(SEGMENT_COUNT, displays.activeLow);
   const width = displays.kind === 'independent' && binding.role.startsWith('sevenSegment') ? displays.width : 1;
   return offValue(width, displays.activeLow);

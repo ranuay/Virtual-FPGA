@@ -22,7 +22,7 @@
  * follows § 7.3's five statuses.
  */
 import type { BoardIo } from './boardPorts.js';
-import { pinChoices, pinTargets, type PinChoice } from './ioPins.js';
+import { pinChoices, pinTargets, resolvePin, type PinChoice, type PinResolution } from './ioPins.js';
 import type { DesignPort } from './types.js';
 
 /** The executable steps. `synthesis`…`program` are the seven rows of PRD.md § 7.2. */
@@ -263,22 +263,51 @@ interface RowContext {
   readonly pins: ReadonlyMap<string, string>;
   readonly targets: ReadonlyMap<string, PinChoice>;
 }
-function portRow(port: DesignPort, { constraints, board, pins, targets }: RowContext): FlowWirePort {
-  const constraint = constraints.get(port.name);
+/** The board key a row's pin names: the student's pin, else the constraint's board port. */
+function pinKey(port: DesignPort, { constraints, pins }: RowContext): string {
+  return pins.get(port.name.toLowerCase()) ?? (constraints.get(port.name) ?? '').toLowerCase();
+}
+
+/**
+ * What the row shows for its pin: the pin as the student wrote it, unless it resolved to a
+ * board port or a word, whose `label` is how the board spells it (`CA…CG`, not `ca…cg`).
+ */
+function pinText(pinned: string | undefined, resolution: PinResolution | undefined): string | undefined {
+  if (pinned === undefined) return undefined;
+  return resolution?.ok === true ? resolution.label : pinned;
+}
+
+/**
+ * The pin the row has and what it resolved to. A pin without a board, or a stale one, leaves
+ * `resolution` undefined and the row falls back to the board port its constraint names.
+ */
+function rowPin(port: DesignPort, { board, pins }: RowContext): { pinned?: string; resolution?: PinResolution } {
   const pinned = pins.get(port.name.toLowerCase());
-  // The pin wins; without one, the constraint I/O Planning wrote names the same board port.
-  const chosen = targets.get(pinned ?? (constraint ?? '').toLowerCase());
-  const pin = pinned && chosen?.label;
-  // A word pin's package pins are its bits', which the board lists one port at a time.
-  const word = chosen === undefined || chosen.bits.length < 2 ? undefined : chosen.bits.map((binding) => binding.name);
-  // An absent key is how the panel spells "no constraint", "no pin", "no choice" (§ 7.3).
+  if (pinned === undefined || board === undefined) return { pinned };
+  return { pinned, resolution: resolvePin(pinned, board) };
+}
+
+/**
+ * The board port names the row lists for its pin, when it covers more than one: a word pins
+ * several (`CA`…`CG`), a single-bit pin names one and the port's spec already says which.
+ */
+function portNames(bits: readonly { readonly name: string }[] | undefined): string[] | undefined {
+  return bits === undefined || bits.length < 2 ? undefined : bits.map((binding) => binding.name);
+}
+
+/** One row: what the port is, what it is pinned to, and the board ports it may go on. */
+function portRow(port: DesignPort, context: RowContext): FlowWirePort {
+  const { constraints, board, targets } = context;
+  const { pinned, resolution } = rowPin(port, context);
+  // A pin's bits are the board ports its bits land on, which the board lists one at a time.
+  const bits = resolution?.ok === true ? resolution.bits : targets.get(pinKey(port, context))?.bits;
   const row = {
     name: port.name,
     direction: port.direction,
     width: port.width,
-    constraint,
-    pin,
-    bits: word,
+    constraint: constraints.get(port.name),
+    pin: pinText(pinned, resolution),
+    bits: portNames(bits),
     choices: board === undefined ? undefined : pinChoices(port, board).map((option) => option.label),
   };
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)) as unknown as FlowWirePort;

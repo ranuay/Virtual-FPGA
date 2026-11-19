@@ -77,6 +77,9 @@ export type ClientFrame =
   // I/O Planning's pin for one design port (PRD.md § 7.6): the board port it drives, or
   // none to go back to the name match. Answered with a `FLOW` frame.
   | { verb: 'FLOW-PIN'; port: string; boardPort?: string }
+  // The RTL schematic of the design the last elaboration produced (PRD.md § 3.4). A view,
+  // not a § 7.2 step: answered with a `SCHEMATIC` frame, or a `LOG` saying why not.
+  | { verb: 'SCHEMATIC' }
   | { verb: 'PING' };
 
 export type ServerFrame =
@@ -100,6 +103,8 @@ export type ServerFrame =
   | { verb: 'WAVE-NONE'; run: number }
   // The design flow's whole state (PRD.md § 7.3, § 4.6): one JSON body, sent after every change.
   | { verb: 'FLOW'; state: string }
+  // The schematic: one JSON body (`SchematicWire`, engines/netlist.ts).
+  | { verb: 'SCHEMATIC'; state: string }
   | { verb: 'PONG' };
 
 export interface ProtocolError {
@@ -254,6 +259,8 @@ export function decodeClientFrame(text: string): ClientFrame | ProtocolError {
         ? { verb: 'FLOW-PIN', port }
         : { verb: 'FLOW-PIN', port, boardPort };
     }
+    case 'SCHEMATIC':
+      return { verb: 'SCHEMATIC' };
     case 'PING':
       return { verb: 'PING' };
     default:
@@ -310,6 +317,8 @@ export function encodeClientFrame(frame: ClientFrame): string {
       const body = frame.files.map((f) => `@@FILE ${f.name}@@\n${f.content}`).join('\n');
       return `${head}\n${body}`;
     }
+    case 'SCHEMATIC':
+      return 'SCHEMATIC';
     case 'FLOW-PIN':
       return frame.boardPort === undefined ? `FLOW-PIN ${frame.port}` : `FLOW-PIN ${frame.port} ${frame.boardPort}`;
     case 'PING':
@@ -380,6 +389,9 @@ export function decodeServerFrame(text: string): ServerFrame | ProtocolError {
       if (run === undefined) return { message: `${verb} requires a run number, got: ${JSON.stringify(inline)}` };
       return { verb, run };
     }
+    case 'FLOW':
+    case 'SCHEMATIC':
+      return { verb, state: body };
     case 'PONG':
       return { verb: 'PONG' };
     default:
@@ -413,6 +425,8 @@ export function encodeServerFrame(frame: ServerFrame): string {
       return `WAVE-NONE ${frame.run}`;
     case 'FLOW':
       return `FLOW\n${frame.state}`;
+    case 'SCHEMATIC':
+      return `SCHEMATIC\n${frame.state}`;
     case 'PONG':
       return 'PONG';
   }

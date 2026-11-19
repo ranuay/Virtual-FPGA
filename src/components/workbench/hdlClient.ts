@@ -21,6 +21,7 @@ import type { BoardPorts } from '../../boards/types';
 import { BOARD_TEXT } from './boardText';
 import type { TimedStim } from './bouncyButtons';
 import { parseFlow, type FlowStep, type FlowWire } from './designFlow';
+import { parseSchematic, type SchematicWire } from '../schematic/schematic';
 
 /** `<bits>`, or `<bits>/<holdNs>` for a step that holds a set time. */
 function stimStepText({ bits, holdNs }: TimedStim): string {
@@ -59,6 +60,8 @@ export interface HdlClientHandlers {
   onOldBackend?(): void;
   /** The design flow's whole state (PRD.md § 7.3); omitted, `FLOW` frames are ignored. */
   onFlow?(flow: FlowWire): void;
+  /** The elaborated design's schematic (PRD.md § 7.2); omitted, `SCHEMATIC` frames are ignored. */
+  onSchematic?(wire: SchematicWire): void;
   /** The waveform frames (docs/waveform_viewer_spec.md § 7.4); omitted, they are ignored. */
   wave?: WaveClientHandlers;
 }
@@ -233,6 +236,11 @@ export class HdlClient {
         if (flow !== undefined) this.handlers.onFlow?.(flow);
         break;
       }
+      case 'SCHEMATIC': {
+        const wire = parseSchematic(body);
+        if (wire !== undefined) this.handlers.onSchematic?.(wire);
+        break;
+      }
       case 'PONG':
         break;
       default:
@@ -396,6 +404,16 @@ export class HdlClient {
     const frame = boardPort === undefined ? `FLOW-PIN ${port}` : `FLOW-PIN ${port} ${boardPort}`;
     if (ws.readyState === WebSocket.OPEN) this.whenWelcomed(() => ws.send(frame));
     else ws.addEventListener('open', () => this.whenWelcomed(() => ws.send(frame)), { once: true });
+  }
+
+  /**
+   * `SCHEMATIC`: the RTL schematic of the design the last elaboration produced
+   * (PRD.md § 3.4). Answered with a `SCHEMATIC` frame, or a `LOG` saying why not.
+   */
+  schematic(): void {
+    const ws = this.ensureSocket();
+    if (ws.readyState === WebSocket.OPEN) this.whenWelcomed(() => ws.send('SCHEMATIC'));
+    else ws.addEventListener('open', () => this.whenWelcomed(() => ws.send('SCHEMATIC')), { once: true });
   }
 
   close(): void {

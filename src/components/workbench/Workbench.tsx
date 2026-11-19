@@ -69,6 +69,8 @@ import { useWaveformView } from '../waveform/useWaveformView';
 import { useProjectWaveViews } from './useProjectWaveViews';
 import { WaveformButton } from '../waveform/WaveformButton';
 import { WaveformPane } from '../waveform/WaveformPane';
+import { SchematicPane } from '../schematic/SchematicPane';
+import type { SchematicWire } from '../schematic/schematic';
 import { useDiagnostics } from './useDiagnostics';
 import { countSeverities, type LineDiagnostic } from './diagnosticStore';
 import { fileAfterDelete, fileRows } from './fileRows';
@@ -329,9 +331,9 @@ export function Workbench() {
     };
   }, []);
 
-  // The one open dialog, if any. About can also be opened from outside
-  // React — the desktop app's native Help > About menu item fires
-  // ABOUT_EVENT on window — so it shows the same dialog as the header.
+  // The one open dialog, if any. About has no header button: it is opened from
+  // outside React — the desktop app's native Help > About menu item fires
+  // ABOUT_EVENT on window.
   const [dialog, applyDialog] = useState<'about' | 'settings' | 'help' | 'newFile' | 'openProject' | 'githubSignIn' | null>(null);
   // New File > Project with files in Files: asked first whether the project keeps them (RemoveFilesDialog).
   const [projectToCreate, setProjectToCreate] = useState<NewProjectChoice | null>(null);
@@ -524,6 +526,19 @@ export function Workbench() {
   // says "Simulation exited unexpectedly." Cleared when a run starts.
   const lastRunError = useRef<AdvisedDiagnostic | null>(null);
 
+  // The RTL schematic (PRD.md § 3.4): the last `SCHEMATIC` frame, shown while its overlay is up.
+  const [schematic, setSchematic] = useState<SchematicWire | null>(null);
+  // Asked for, not yet answered: the pane says it is elaborating instead of drawing nothing.
+  const [schematicPending, setSchematicPending] = useState(false);
+  const openSchematicSource = useCallback(
+    (file: string, line: number) => {
+      const target = files.find((entry) => entry.name === file);
+      if (target === undefined) return;
+      revealLocation({ fileId: target.id, line });
+    },
+    [files, revealLocation],
+  );
+
   const clientRef = useRef<HdlClient | null>(null);
   // The waveform viewer (docs/waveform_viewer_spec.md): recorded for testbench runs, fetched when opened.
   const waveView = useWaveformView({
@@ -609,6 +624,10 @@ export function Workbench() {
           setFlow(null);
         },
         onFlow: setFlow,
+        onSchematic: (wire) => {
+          setSchematic(wire);
+          setSchematicPending(false);
+        },
         onOldBackend: () => appendLog(BOARD_TEXT.oldBackend, 'error'),
         wave: waveHandlers,
       });
@@ -1641,6 +1660,13 @@ export function Workbench() {
     getClient().flowRun(step, files, topName, topUnit, activeBoard.ports);
   };
 
+  /** The RTL schematic (PRD.md § 3.4): a view of the design, so it replaces the editor at once. */
+  const handleOpenSchematic = (): void => {
+    setSchematicPending(true);
+    setOverlay('schematic');
+    getClient().schematic();
+  };
+
   /** I/O Planning's pin for one design port (§ 7.6); the backend answers with a `FLOW` frame. */
   const handleFlowPin = (port: string, boardPort: string | undefined) => {
     getClient().flowPin(port, boardPort);
@@ -1656,13 +1682,14 @@ export function Workbench() {
     checkAndRun(target.fileId, runTargetFor(current, file, pane), current.unitName, pane);
   };
 
-  /** A pane's Play / Stop (paneRun.ts): Stop only on the pane whose unit runs (B5), Play greyed out while another runs. */
+  /** A pane's Play / Stop (paneRun.ts): Stop only on the pane whose unit runs (B5), Play greyed out while another runs or the Nexys board is not programmed (§ 7.5). */
   const paneRun = (pane: PaneRole, target: PaneTarget): PaneRun | null => {
     const file = files.find((f) => f.id === target.fileId);
-    const kind = file && paneRunFor({ status, runFileId, runUnitName, target, folder: file.folder, pane });
+    const kind = file && paneRunFor({ status, runFileId, runUnitName, startBlocked, target, folder: file.folder, pane });
     if (!kind) return null;
     if (kind === 'stop') return { running: true, disabled: status === 'compiling', onClick: handleStop };
-    const blockedReason = kind === 'blocked' ? BLOCKED_REASON : undefined;
+    const blockedReason =
+      kind === 'blocked' ? (pane === 'rtl' && startBlocked !== undefined ? startBlocked : BLOCKED_REASON) : undefined;
     return { running: false, disabled: false, blockedReason, onClick: () => handleRunPane(pane, target) };
   };
 
@@ -1865,9 +1892,6 @@ export function Workbench() {
       <Header
         onSettings={() => setDialog('settings')}
         onHelp={() => setDialog('help')}
-        onAbout={() => setDialog('about')}
-        onGitHub={() => (signedIn ? setOverlay((shown) => (shown === 'projects' ? null : 'projects')) : setDialog('githubSignIn'))}
-        gitHubUser={gitHub.session?.user ?? null}
         notifications={
           <UpdateBell
             release={updateCheck.newerRelease}
@@ -2082,6 +2106,7 @@ export function Workbench() {
               busy={flowBusy || isSimulating}
               onRun={handleFlowStep}
               onPin={handleFlowPin}
+              onSchematic={handleOpenSchematic}
             />
             <FileExplorer
               rows={rows}
@@ -2191,6 +2216,14 @@ export function Workbench() {
             )}
             {overlay === 'waveform' && (
               <WaveformPane waveform={waveView.waveform} consoleLines={consoleTexts} {...waveView.pane} />
+            )}
+            {overlay === 'schematic' && (
+              <SchematicPane
+                schematic={schematic}
+                busy={schematicPending}
+                onOpenSource={openSchematicSource}
+                onClose={() => setOverlay(null)}
+              />
             )}
             {overlay === 'examples' && (
             <ExamplesPane

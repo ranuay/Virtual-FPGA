@@ -13,10 +13,13 @@ import type { SimStatus } from './SimulationCard';
 import type { PaneRole } from './editorView';
 import type { PaneTarget } from './tbDetect/types';
 
-/** `blocked`: Play, greyed out, because something else is simulating. */
+/**
+ * `blocked`: Play, greyed out — another run is going, or (Nexys A7) the board is
+ * not programmed yet (PRD.md § 7.5).
+ */
 export type PaneRunKind = 'play' | 'stop' | 'blocked';
 
-/** The tooltip of a greyed-out Play. */
+/** The tooltip of a greyed-out Play while another simulation runs. */
 export const BLOCKED_REASON = 'Stop the simulation first';
 
 export interface PaneRunInput {
@@ -25,6 +28,8 @@ export interface PaneRunInput {
   readonly runFileId: string | null;
   /** …and the unit it runs, when one was named. */
   readonly runUnitName: string | null;
+  /** Why Start is locked (Nexys A7 before Program Device), or undefined when it may run. */
+  readonly startBlocked?: string;
   readonly target: PaneTarget;
   readonly folder: Folder;
   readonly pane: PaneRole;
@@ -32,6 +37,11 @@ export interface PaneRunInput {
 
 /** What the pane shows, or `null` for no control: a file that cannot be run from this pane. */
 export function paneRunFor(input: PaneRunInput): PaneRunKind | null {
+  // § 7.5: the board's run belongs to Program Device, so the design pane's Play waits
+  // for it too, not only the Start buttons. A TB pane is a testbench, not the board.
+  if (input.status === 'stopped' && input.pane === 'rtl' && input.startBlocked !== undefined) {
+    return canRunFrom(input) ? 'blocked' : null;
+  }
   if (input.status === 'stopped') return canRunFrom(input) ? 'play' : null;
   if (runsThisPane(input)) return 'stop';
   return canRunFrom(input) ? 'blocked' : null;

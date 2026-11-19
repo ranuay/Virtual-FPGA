@@ -25,11 +25,13 @@ export interface SimToggleProps {
 /** The one-click play/stop icon in an editor pane's header. */
 export function SimToggle({ running, disabled = false, fileName, blockedReason, onClick, className }: SimToggleProps) {
   const action = running ? `Stop simulation of ${fileName}` : `Start simulation with ${fileName} as top`;
+  // The reason is a sentence of its own, with or without its full stop (§ 7.5's is a paragraph).
+  const reason = blockedReason?.replace(/\.$/, '');
   return (
     <button
       type="button"
       className={cx('wb-simtoggle', blockedReason && 'is-blocked', className)}
-      aria-label={blockedReason ? `${action}. ${blockedReason}.` : action}
+      aria-label={reason ? `${action}. ${reason}.` : action}
       aria-disabled={blockedReason ? true : undefined}
       title={blockedReason ?? action}
       disabled={disabled}

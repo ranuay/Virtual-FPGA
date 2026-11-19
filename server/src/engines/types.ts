@@ -11,6 +11,7 @@ import type { ErrorStage, VhdlFileInput, WaveFormat } from '../protocol.js';
 import type { BatchHandle, RunHandle } from '../runtime.js';
 import type { BoardIo } from './boardPorts.js';
 import type { PinMap } from './ioPins.js';
+import type { SchematicWire } from './netlist.js';
 
 export type Language = 'vhdl' | 'verilog';
 
@@ -143,6 +144,13 @@ export interface SimEngine {
    * (`PRD.md` § 20 Rule 5).
    */
   recoverBoardRun?(plan: RunPlan, stderr: string): Promise<boolean>;
+  /**
+   * The RTL schematic of the design already compiled in `dir` (PRD.md § 3.4, § 7.2:
+   * RTL ANALYSIS → Open Elaborated Design → Schematic), or the synthesiser's error.
+   * Optional: only an engine that can synthesise offers one, and the panel hides the
+   * step when its engine cannot.
+   */
+  schematic?(dir: string, top: string): Promise<SchematicWire | string>;
 }
 
 /** How one start of a batch run is wired. */

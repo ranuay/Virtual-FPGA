@@ -181,9 +181,11 @@ for exactly what it does.
 
 ### `<Header>`
 
-Chrome: logo, title, tagline, and the Settings, Help and About buttons. It
-owns no state; `<Workbench>` passes `onSettings`, `onHelp` and `onAbout` (all
-optional), which open the three dialogs below.
+Chrome: logo, title, tagline, and the Settings and Help buttons. It
+owns no state; `<Workbench>` passes `onSettings` and `onHelp` (all
+optional) plus the save/share split button and the update bell. The header
+carries no GitHub or About button: projects open from Files, and About is
+reached through `ABOUT_EVENT` (below).
 
 ### `<AboutDialog>`, `<SettingsDialog>` and `<HelpDialog>`
 
@@ -197,9 +199,9 @@ state, so at most one is open.
   licence (free software, GPL-2.0), the version (`__APP_VERSION__`), credit
   to GHDL, the statement that it was developed at USN – University of
   South-Eastern Norway for use in its entry course on VHDL programming, and
-  the **"ABSOLUTELY NO WARRANTY — use it at your own risk"** notice. Opened
-  from the header's About button, or by dispatching `ABOUT_EVENT` on
-  `window`, which `<Workbench>` listens for.
+  the **"ABSOLUTELY NO WARRANTY — use it at your own risk"** notice. It has
+  no header button; `<Workbench>` opens it when `ABOUT_EVENT` is dispatched on
+  `window` (the desktop app's native Help › About), and listens for it.
 - **Settings** — *Languages* (VHDL and Verilog, each ticked on its own; the Examples
   pane opens with these ticked and never changes them: `languagePrefs.ts`) and
   *Editor › Testbench split view* (`editorSplit.ts`), both in localStorage, which

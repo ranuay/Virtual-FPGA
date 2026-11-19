@@ -284,6 +284,8 @@ export class Session {
    * choice instead of overwriting it with the name match.
    */
   private pins = new Map<string, string>();
+  /** The unit the last successful elaboration produced, which the schematic reads (`engine.schematic`). */
+  private elaboratedTop: string | null = null;
   /** What the source looked like when Synthesis last ran; a different one is `source` (§ 7.4). */
   private synthesisedFrom: string | null = null;
   /** The last RUN's sources: Synthesis re-prepares them without starting a simulation. */
@@ -487,7 +489,40 @@ export class Session {
     return started ? undefined : 'The design did not start: the board was not programmed.';
   }
 
-  /** Synthesis is real: the same analyse + elaborate a RUN performs, without starting a simulation. */
+  /**
+   * PRD.md § 3.4's RTL schematic (Vivado's RTL ANALYSIS → Open Elaborated Design →
+   * Schematic), asked for on its own: it is a view of the design the last elaboration
+   * produced, not a step of § 7.2's seven, and it does not move the flow on. Elaborating
+   * again would restart the flow the student already worked through.
+   */
+  async handleSchematic(): Promise<void> {
+    const sources = this.lastSources;
+    if (sources === null) {
+      this.send({ verb: 'LOG', text: 'The schematic needs a design: run it once first.' });
+      return;
+    }
+    const engine = this.chooseEngine(sources.topFile);
+    if (engine.schematic === undefined) {
+      this.send({ verb: 'LOG', text: `The ${engine.language} engine has no RTL schematic.` });
+      return;
+    }
+    // GHDL's synthesiser reads the design it has analysed, so the schematic needs an
+    // elaboration to draw from: Synthesis is what leaves one (`adoptSynthesis`), and
+    // running it here would restart a flow the student already worked through.
+    const top = this.elaboratedTop;
+    if (top === null) {
+      this.send({ verb: 'LOG', text: 'The schematic needs an elaborated design: run Synthesis first.' });
+      return;
+    }
+    const wire = await engine.schematic(this.dir, top);
+    if (this.destroyed) return;
+    if (typeof wire === 'string') {
+      this.send({ verb: 'LOG', text: wire });
+      return;
+    }
+    this.send({ verb: 'SCHEMATIC', state: JSON.stringify(wire) });
+  }
+
   private async synthesise(): Promise<string | undefined> {
     const sources = this.lastSources;
     if (sources === null) return 'Synthesis needs a design: run it once, then synthesize.';
@@ -504,10 +539,11 @@ export class Session {
     return undefined;
   }
 
-  /** What a successful elaboration leaves behind: the ports the panel lists, and the sources they came from. */
+  /** What a successful compilation leaves behind: the ports the panel lists, the top the schematic reads, and the sources they came from. */
   private adoptSynthesis(plan: RunPlan, sources: NonNullable<Session['lastSources']>): void {
     for (const message of plan.messages) this.send({ verb: 'LOG', text: message });
     this.flowPorts = plan.ports ?? [];
+    this.elaboratedTop = plan.boardTop ?? plan.runTarget;
     this.synthesisedFrom = sourcesFingerprint(sources);
     const count = this.flowPorts.length;
     this.send({ verb: 'LOG', text: `Synthesis finished: ${count} port${count === 1 ? '' : 's'} elaborated.` });

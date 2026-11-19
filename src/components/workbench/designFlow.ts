@@ -28,8 +28,9 @@ export const STEP_LABEL: Readonly<Record<FlowStep, string>> = {
 
 /**
  * Vivado 2020.2's Flow Navigator headings (docs/vivado_ref.png), the ones a step here
- * belongs under. `RTL ANALYSIS` is absent on purpose: its only entry is Open Elaborated
- * Design → Schematic, which is T7 and has no step yet. A group with no steps is not drawn.
+ * belongs under. `RTL ANALYSIS` is deliberately not a member: its only entry, Open
+ * Elaborated Design → Schematic, is a view of the design rather than a move through the
+ * flow, so `DesignFlowPanel` draws that heading itself and it never appears here.
  */
 export type FlowGroup = 'SYNTHESIS' | 'IMPLEMENTATION' | 'PROGRAM AND DEBUG';
 

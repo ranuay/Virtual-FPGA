@@ -1,0 +1,116 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* The RTL schematic view (PRD.md § 3.4): it fills the editor area like the waveform
+   view, so the way back to the code is one click. Blocks are tokens, not literals: the
+   same drawing in either theme. */
+.sc-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--wb-surface, #ffffff);
+  color: var(--wb-text, #0f172a);
+}
+.sc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--wb-border, #d8dee9);
+  background: var(--wb-tool-bg, #eef1f6);
+}
+.sc-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.sc-subtitle {
+  font-size: 12px;
+  color: var(--wb-muted, #64748b);
+}
+.sc-head button {
+  margin-left: auto;
+}
+.sc-counts {
+  font-size: 11px;
+  color: var(--wb-muted, #64748b);
+}
+.sc-canvas {
+  flex: 1;
+  min-height: 0;
+}
+.sc-canvas svg {
+  display: block;
+}
+.sc-note {
+  margin: 0;
+  padding: 12px;
+  font-size: 13px;
+  color: var(--wb-muted, #64748b);
+}
+.sc-edges path {
+  fill: none;
+  stroke: var(--wb-muted, #94a3b8);
+  stroke-width: 1;
+}
+/* The dot where a fan-out leaves its net's trunk: the one mark that reads as a junction. */
+.sc-junction {
+  fill: var(--wb-success, #15803d);
+  stroke: none;
+}
+.sc-gate-shape {
+  fill: var(--wb-surface, #ffffff);
+  stroke: var(--wb-border, #94a3b8);
+  /* Two, so a gate reads at a glance and at 100 %: at one the outline vanished
+     into the wires, which are also one. */
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.sc-gate-name {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--wb-text, #0f172a);
+  text-anchor: middle;
+}
+.sc-gate-op {
+  font-size: 10px;
+  fill: var(--wb-muted, #475569);
+  text-anchor: middle;
+}
+.sc-node rect {
+  fill: var(--wb-surface, #ffffff);
+  stroke: var(--wb-border, #94a3b8);
+  stroke-width: 1;
+}
+.sc-node-name {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--wb-text, #0f172a);
+}
+.sc-node-op {
+  font-size: 10px;
+  fill: var(--wb-muted, #475569);
+}
+.sc-node--port rect {
+  stroke: var(--wb-accent, #2f6fed);
+}
+.sc-node--reg rect {
+  stroke: var(--wb-success, #15803d);
+}
+.sc-node--linked {
+  cursor: pointer;
+}
+.sc-node--linked:hover rect,
+.sc-node--linked:focus-visible rect,
+.sc-node--linked:hover .sc-gate-shape,
+.sc-node--linked:focus-visible .sc-gate-shape {
+  fill: var(--wb-row-hover, #f1f5f9);
+  stroke-width: 3;
+}
+.sc-node--linked:hover rect,
+.sc-node--linked:focus-visible rect {
+  fill: var(--wb-row-hover, #f1f5f9);
+}
+.sc-node--linked:focus-visible {
+  outline: none;
+}

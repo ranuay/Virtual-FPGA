@@ -23,6 +23,7 @@ import { checkBoardPortShapes, shapeErrors, shapeNotes, type DeclaredPort } from
 import { explainUnconnectedPorts, planExtraPorts, type TopSource } from './extraPorts.js';
 import { ghdlPosition, portDeclarations } from './vhdlPorts.js';
 import { sameNameNotes } from './sameNameNotes.js';
+import { parseNetlist, type SchematicWire } from './netlist.js';
 import { connectPorts, type PinMap } from './ioPins.js';
 import type {
   BoardFiles,
@@ -338,6 +339,21 @@ async function recoverBoardRun(plan: RunPlan, stderr: string): Promise<boolean> 
   const elaborated = await ghdl(['-e', ...GHDL_OPTIONS, plan.runTarget], plan.dir);
   return elaborated.code === 0;
 }
+/**
+ * The RTL schematic (PRD.md § 3.4, § 7.2): the design as GHDL's synthesiser elaborates it,
+ * read back from the VHDL netlist it writes. Not bit-blasted (`--out=dot` would be), so one
+ * block stands for one source assignment — the view a student can check against their code.
+ *
+ * A failed synthesis is a value, not an exception: it is the design's error, and the caller
+ * reports it where the student asked for the schematic.
+ */
+export async function schematicOf(dir: string, top: string): Promise<SchematicWire | string> {
+  const synthesised = await ghdl(['synth', ...GHDL_OPTIONS, '--out=vhdl', top], dir);
+  if (synthesised.code !== 0 || synthesised.out.trim() === '') {
+    return synthesised.err === '' ? `GHDL synthesized nothing for ${top}.` : synthesised.err;
+  }
+  return parseNetlist(synthesised.out.replace(CONFLICTING_CONTEXT, ''), top);
+}
 
 export const ghdlEngine: SimEngine = {
   language: 'vhdl',
@@ -346,4 +362,5 @@ export const ghdlEngine: SimEngine = {
   startBatchRun: (plan, { onOutput, timeoutMs, waveFile }) =>
     runBatch(plan.dir, plan.runTarget, onOutput, timeoutMs, waveArguments(plan.wave, waveFile)),
   recoverBoardRun,
+  schematic: schematicOf,
 };

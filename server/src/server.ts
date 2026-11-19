@@ -356,6 +356,9 @@ export function startBackend(opts: BackendOptions = {}): BackendHandle {
         case 'FLOW-PIN':
           session.handleFlowPin(frame.port, frame.boardPort);
           break;
+        case 'SCHEMATIC':
+          void session.handleSchematic();
+          break;
         case 'PING':
           send({ verb: 'PONG' });
           break;

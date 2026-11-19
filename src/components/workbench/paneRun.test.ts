@@ -42,6 +42,18 @@ describe('paneRunFor', () => {
     expect(paneRunFor({ ...design, status: 'running', runFileId: 'b' })).toBe('blocked');
   });
 
+  test('greys the design pane out until Program Device has programmed the board', () => {
+    expect(paneRunFor({ ...design, startBlocked: 'Run Program Device first.' })).toBe('blocked');
+  });
+
+  test('leaves the TB pane able to run a testbench while the board is unprogrammed', () => {
+    expect(paneRunFor({ ...design, folder: 'work', pane: 'tb', startBlocked: 'Run Program Device first.' })).toBe('play');
+  });
+
+  test('never greys out Stop for the board lock: a run already going is stopped as usual', () => {
+    expect(paneRunFor({ ...design, status: 'running', runFileId: 'a', startBlocked: 'Run Program Device first.' })).toBe('stop');
+  });
+
   test('offers nothing while running on a file that could not run from this pane', () => {
     expect(paneRunFor({ ...design, status: 'running', runFileId: 'b', folder: 'work' })).toBeNull();
   });

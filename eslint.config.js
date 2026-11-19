@@ -101,6 +101,9 @@ const NEW_CODE = [
   'src/components/workbench/usePastedArchitecture.ts',
   'src/components/workbench/quickFix.test.tsx',
   'src/components/workbench/quickFix.testSupport.ts',
+  // The RTL schematic view (PRD.md § 3.4, § 7.2: RTL ANALYSIS → Schematic).
+  'src/components/schematic/**/*.ts',
+  'src/components/schematic/**/*.tsx',
   // Arranging the Board panels by dragging (docs/imp_rearrange_board_io.md).
   'src/project/panelOrder.ts',
   'src/project/panelOrder.test.ts',

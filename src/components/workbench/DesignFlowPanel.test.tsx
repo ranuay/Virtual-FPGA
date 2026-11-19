@@ -34,7 +34,9 @@ const PINS = {
 };
 
 const render = (flow: FlowWire | undefined, busy = false, onPin: (port: string, boardPort: string | undefined) => void = () => {}): string =>
-  renderToStaticMarkup(<DesignFlowPanel flow={flow ?? null} pins={PINS} busy={busy} onRun={() => {}} onPin={onPin} />);
+  renderToStaticMarkup(
+    <DesignFlowPanel flow={flow ?? null} pins={PINS} busy={busy} onRun={() => {}} onPin={onPin} onSchematic={() => {}} />,
+  );
 
 const runButtons = (html: string): string[] => html.match(/<button[^>]*class="wb-flow__run"[^>]*>/g) ?? [];
 
@@ -42,8 +44,9 @@ describe('DesignFlowPanel', () => {
   it('lists all seven steps before the backend has said anything, with only Program Device locked', () => {
     const html = render(undefined);
     expect(html.match(/class="wb-flow__step /g)).toHaveLength(7);
-    // The first click opens the socket, so the other six must be clickable before any FLOW frame.
-    expect(runButtons(html).filter((button) => !button.includes('disabled'))).toHaveLength(6);
+    // The first click opens the socket, so everything but Program Device is clickable
+    // before any FLOW frame — RTL ANALYSIS's own Open Elaborated Design included.
+    expect(runButtons(html).filter((button) => !button.includes('disabled'))).toHaveLength(7);
     expect(runButtons(html).at(-1)).toContain('disabled');
   });
 
@@ -58,7 +61,8 @@ describe('DesignFlowPanel', () => {
     const idle = render(flowOf({ synthesis: 'done' }));
     // § 7.5: a step whose prerequisites are missing is still clickable — the panel asks
     // before running them. Only Program Device is disabled, because the backend refuses it.
-    expect(runButtons(idle).filter((button) => !button.includes('disabled'))).toHaveLength(6);
+    // RTL ANALYSIS's Open Elaborated Design is clickable too: it never moves the flow on.
+    expect(runButtons(idle).filter((button) => !button.includes('disabled'))).toHaveLength(7);
     const busy = render(flowOf({ synthesis: 'done' }), true);
     expect(runButtons(busy).every((button) => button.includes('disabled'))).toBe(true);
   });
@@ -152,6 +156,7 @@ describe('DesignFlowPanel', () => {
         busy={false}
         onRun={() => {}}
         onPin={() => {}}
+        onSchematic={() => {}}
       />,
     );
     expect(bare).toContain('<code>—</code>');
@@ -164,7 +169,7 @@ describe('DesignFlowPanel', () => {
   it('groups the steps under Vivado’s Flow Navigator headings, in Vivado’s order', () => {
     const html = render(undefined);
     const headings = [...html.matchAll(/wb-flow__group-title">([^<]+)</g)].map((match) => match[1]);
-    expect(headings).toEqual(['SYNTHESIS', 'IMPLEMENTATION', 'PROGRAM AND DEBUG']);
+    expect(headings).toEqual(['RTL ANALYSIS', 'SYNTHESIS', 'IMPLEMENTATION', 'PROGRAM AND DEBUG']);
     // Get Bitstream belongs under PROGRAM AND DEBUG in Vivado, not under IMPLEMENTATION.
     const implementation = html.slice(html.indexOf('IMPLEMENTATION'), html.indexOf('PROGRAM AND DEBUG'));
     expect(implementation).toContain('Run Implementation');

@@ -25,8 +25,17 @@ import './DesignFlowPanel.css';
 
 /** The Flow Navigator's sections, computed once: the step list is static. */
 const GROUPS = stepGroups();
-
 const EXPLANATION: Readonly<Record<FlowStep, { vivado: string; why: string; here: string }>> = content;
+
+/**
+ * RTL ANALYSIS's one entry, which is not a flow step (§ 7.2 lists seven, and this is a
+ * view of the design rather than a move through the flow), so it carries its own text.
+ */
+const SCHEMATIC_EXPLAIN = {
+  vivado: 'Open Elaborated Design builds the design from RTL without optimising it; the Schematic view draws its blocks and wires.',
+  why: 'It shows what the code means before synthesis rewrites it, so a wrong connection is visible while it still looks like the source.',
+  here: 'Real: GHDL elaborates the same sources a RUN compiles, and the netlist it writes is drawn as blocks with their wires.',
+} as const;
 
 export interface DesignFlowPanelProps {
   /** The backend's latest `FLOW` frame; null before the first one arrives. */
@@ -38,6 +47,12 @@ export interface DesignFlowPanelProps {
   onRun: (step: FlowStep) => void;
   /** I/O Planning's pin for one design port (§ 7.6); undefined goes back to the name match. */
   onPin: (port: string, boardPort: string | undefined) => void;
+  /**
+   * Opens the RTL schematic of the elaborated design (PRD.md § 3.4). Vivado keeps
+   * RTL ANALYSIS beside the seven flow steps, not among them, so it is its own button:
+   * it is a view of the design, and it never moves the flow on.
+   */
+  onSchematic: () => void;
 }
 
 interface Jump {
@@ -49,7 +64,7 @@ interface Jump {
  * § 7.5: a step whose prerequisites are missing asks first; the ones that can run are
  * asked for directly. Program Device is never asked for — its button is disabled instead.
  */
-export function DesignFlowPanel({ flow, busy, pins, onRun, onPin }: DesignFlowPanelProps) {
+export function DesignFlowPanel({ flow, busy, pins, onRun, onPin, onSchematic }: DesignFlowPanelProps) {
   const [explained, setExplained] = useState<FlowStep | null>(null);
   const [jump, setJump] = useState<Jump | null>(null);
   const request = (step: FlowStep): void => {
@@ -64,6 +79,7 @@ export function DesignFlowPanel({ flow, busy, pins, onRun, onPin }: DesignFlowPa
         <h2 className="wb-flow__title">Flow Navigator</h2>
         {flow !== null && <span className={cx('wb-flow__board', `is-${flow.board}`)}>{BOARD_STAGE_TEXT[flow.board]}</span>}
       </div>
+      <RtlAnalysisPanel busy={busy} onSchematic={onSchematic} />
       {GROUPS.map(({ group, steps }) => (
         <section className="wb-flow__group" key={group}>
           <h3 className="wb-flow__group-title">{group}</h3>
@@ -84,6 +100,45 @@ export function DesignFlowPanel({ flow, busy, pins, onRun, onPin }: DesignFlowPa
       ))}
       {flow !== null && flow.ports.length > 0 && <PortTable flow={flow} pins={pins} busy={busy} onPin={onPin} />}
       {jump !== null && <JumpDialog step={jump.step} missing={jump.missing} onRun={onRun} onClose={() => setJump(null)} />}
+    </section>
+  );
+}
+
+/**
+ * RTL ANALYSIS's one entry: a view of the elaborated design, not a step of § 7.2's seven.
+ * It draws the schematic the backend already elaborated, so it never moves the flow on.
+ */
+function RtlAnalysisPanel({ busy, onSchematic }: { busy: boolean; onSchematic: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="wb-flow__group">
+      <h3 className="wb-flow__group-title">RTL ANALYSIS</h3>
+      <ol className="wb-flow__steps">
+        <li className="wb-flow__step">
+          <div className="wb-flow__row">
+            <span className="wb-flow__dot" aria-hidden="true" />
+            <button type="button" className="wb-flow__label" aria-expanded={open} onClick={() => setOpen(!open)}>
+              Open Elaborated Design
+            </button>
+            <button type="button" className="wb-flow__run" aria-label="Open Elaborated Design" title="Draw the elaborated design" disabled={busy} onClick={onSchematic}>
+              <PlayIcon aria-hidden="true" />
+            </button>
+          </div>
+          {open && (
+            <div className="wb-flow__explain">
+              <p>
+                <strong>Vivado:</strong> {SCHEMATIC_EXPLAIN.vivado}
+              </p>
+              <p>
+                <strong>Why:</strong> {SCHEMATIC_EXPLAIN.why}
+              </p>
+              <p>
+                <strong>Here:</strong> {SCHEMATIC_EXPLAIN.here}
+              </p>
+            </div>
+          )}
+        </li>
+      </ol>
     </section>
   );
 }
